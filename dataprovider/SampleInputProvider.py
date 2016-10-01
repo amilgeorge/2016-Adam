@@ -11,6 +11,7 @@ from skimage import io,transform
 import matplotlib.pyplot as plt
 import re
 from dataprovider.preprocess import vgg_preprocess
+   
 
 class SampleInputProvider:
     
@@ -24,7 +25,7 @@ class SampleInputProvider:
         self.trainsetInfo = np.loadtxt(os.path.join(self.BASE_DIR,\
                         self.IMAGESETS,'train.txt'), dtype=bytes,unpack=False).astype(str)
         
-        self.trainsetInfo = self.trainsetInfo[1:2,:]
+        self.trainsetInfo = self.trainsetInfo[1:10,:]
         self.db = self.createDB()
     
     class DB: 
@@ -39,7 +40,7 @@ class SampleInputProvider:
         def __init__(self,db, batch_size):
             self.db=db
             numImages = self.db.images.shape[0]
-            self.sequence_info = list(range(numImages))
+            self.sequence_info =np.random.permutation( list(range(numImages)))
             self.index = 0
             self.batch_size = batch_size
           
@@ -53,15 +54,15 @@ class SampleInputProvider:
                 
                 toIndex = self.index+self.batch_size
                 
+                selected_indexes = self.sequence_info[self.index:toIndex]
+                
                 # Read images and labels 
-                images = self.db.images[self.index:toIndex,:,:,:]
+                images = self.db.images[selected_indexes,:,:,:]
+                labels = self.db.labels[selected_indexes,:,:]
+
                 images = (images*255)
                 images = vgg_preprocess(images)
-                
-                #rgb_files = [rgb_file - mean for rgb_file in rgb_files]
-                
-                labels = self.db.labels[self.index:toIndex,:,:]
-                
+                                
                 # Prepare data batch
                 batch = SampleInputProvider.DataBatch()
                 batch.images = images
@@ -113,7 +114,7 @@ class SampleInputProvider:
         
         # Read images 
         rgb = io.imread(rgbFile)
-        mask = io.imread(maskFile)
+        mask = io.imread(maskFile,as_grey=True)
         mask = np.expand_dims(mask,axis=2)
         
         # Concatenate images
@@ -128,7 +129,7 @@ class SampleInputProvider:
     
     def readLabel(self,labelFile) :
         maskFile = self.BASE_DIR + labelFile
-        mask = io.imread(maskFile)
+        mask = io.imread(maskFile,as_grey=True)
         
         # Resize 
         mask = transform.resize(mask,[self.RESIZE_HEIGHT,self.RESIZE_WIDTH])
@@ -159,6 +160,6 @@ class SampleInputProvider:
 
 if __name__ == '__main__':
     provider = SampleInputProvider()
-    input_batch = provider.sequence_batch_itr(1)
+    input_batch = provider.sequence_batch_itr(2)
     for i, batch in enumerate(input_batch):
         print (i, 'rgb files: ')

@@ -19,6 +19,7 @@ handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s -
 logger.addHandler(handler)
 logger.setLevel(logging.DEBUG)
 
+
 def getLogger():
 	return logger
 

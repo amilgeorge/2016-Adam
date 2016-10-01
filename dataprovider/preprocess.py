@@ -19,10 +19,10 @@ def _mean_image_subtraction(images, means):
       number of values in `means`.
   """
   
-  if images.get_shape().ndims != 4:
+  if len(images.shape) != 4:
       raise ValueError('Input must be of size [batch_size, height, width, C>0]')
       
-  num_channels = images.get_shape().as_list()[-1]
+  num_channels = images.shape[-1]
       
   if len(means) != num_channels:
       raise ValueError('len(means) must match the number of channels')

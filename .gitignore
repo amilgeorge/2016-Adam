@@ -1,2 +1,5 @@
-logs/
+log/
 checkpoints/
+exp/
+*.pyc
+*.log
