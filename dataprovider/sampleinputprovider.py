@@ -15,7 +15,7 @@ from dataprovider.preprocess import vgg_preprocess
 
 class SampleInputProvider:
     
-    BASE_DIR = os.path.join(os.path.expanduser('~'),'DAVIS')
+    BASE_DIR = os.path.join('/work/george','DAVIS')
     IMAGESETS = os.path.join('ImageSets','480p')
     
     RESIZE_HEIGHT = 224
@@ -25,7 +25,7 @@ class SampleInputProvider:
         self.trainsetInfo = np.loadtxt(os.path.join(self.BASE_DIR,\
                         self.IMAGESETS,'train.txt'), dtype=bytes,unpack=False).astype(str)
         
-        self.trainsetInfo = self.trainsetInfo[1:10,:]
+        #self.trainsetInfo = self.trainsetInfo[1:10,:]
         self.db = self.createDB()
     
     class DB: 

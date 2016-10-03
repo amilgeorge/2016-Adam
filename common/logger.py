@@ -20,6 +20,9 @@ logger.addHandler(handler)
 logger.setLevel(logging.DEBUG)
 
 
-def getLogger():
+def getLogger(filename=None):
+	if filename != None:
+		file_handler = logging.FileHandler(filename)
+		logger.addHandler(file_handler)
 	return logger
 
