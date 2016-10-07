@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Sat Sep 17 19:27:22 2016
+'''
+Created on Oct 3, 2016
 
 @author: george
-"""
+'''
 
 from models import vgg
 from models import resnet_v1
@@ -13,7 +12,7 @@ from dataprovider.sampleinputprovider import SampleInputProvider
 from common.logger import getLogger
 from common.diskutils import ensure_dir
 from skimage import io
-from net.coarsenet import CoarseNet
+from net.refinenet import RefineNet
 import time
 import os
 
@@ -24,74 +23,19 @@ RESNET_50 = 'resnet_v1_50'
 HEAD = RESNET_50
 TAIL = 'tail'
 
-RUN_ID = "test3"
+RUN_ID = "refine-test_1"
 EVENTS_DIR = os.path.join('events',RUN_ID)#time.strftime("%Y%m%d-%H%M%S")
 EXP_DIR = os.path.join('exp',RUN_ID)
 LOGS_DIR = os.path.join('logs',RUN_ID)
 
 
     
-    
-def initTail(session,net):
+def init_refine(session,net):
     varsTail = tf.get_collection(tf.GraphKeys.VARIABLES,scope = TAIL)
     init_op = tf.initialize_variables(varsTail)
     session.run(init_op)
+    
 
-
-def initHead(session,head,net):
-    if head == VGG_16:
-        checkpoint_file = 'checkpoints/vgg_16.ckpt'
-        first_layer_filter_name = 'conv1/conv1_1/weights'
-        previous_filter_size = [3,3,3,64]
-    elif head == RESNET_50:
-        checkpoint_file = 'checkpoints/resnet_v1_50.ckpt'
-        first_layer_filter_name = 'conv1/weights'
-        previous_filter_size = [7,7,3,64]
-    
-    # initialize modified first filter    
-    add_filter_channel_and_init(session, head,checkpoint_file, first_layer_filter_name, previous_filter_size)
-    
-    # initialize remaining network
-    
-    varToRestore = slim.get_variables_to_restore(include = [head],
-                                        exclude=[head+'/'+first_layer_filter_name])
-    restorer2 = tf.train.Saver(varToRestore)
-    restorer2.restore(session,checkpoint_file)
-        
-def add_filter_channel_and_init(session,head,checkpoint_file,filter_name,previous_filter_size):
-    
-    # Create a temp variable to restore the previous value to
-    tempVar = tf.get_variable("temp/w",previous_filter_size)
-    
-    # Restore the previous value to the temp variable
-    varMap = {head+'/'+filter_name:tempVar} 
-    restorer1 = tf.train.Saver(varMap)  
-    restorer1.restore(session,checkpoint_file)
-    temp_val = tempVar.eval()
-    
-    # Modify the filter shape to target shape
-    num_filters = temp_val.shape[-1]
-    kernal_size = temp_val.shape[0:2]    
-
-    filt_list = []
-    for i in range(num_filters):
-        mean_filt = temp_val[:,:,:,i].mean()
-        std_filt = temp_val[:,:,:,i].std()
-        
-        filt = np.random.normal(mean_filt,std_filt,kernal_size)
-        filt = filt[:,:,np.newaxis,np.newaxis]
-        filt_list.append(filt)   
-                
-        
-    filt_array = np.concatenate(filt_list,axis=3)                
-    temp_mod_val = np.concatenate((temp_val,filt_array),axis=2) 
-    
-    # Restore it to the actual network
-    with tf.variable_scope(head,reuse=True):    
-        w=tf.get_variable(filter_name)
-        assign_op = w.assign(temp_mod_val)
-        session.run(assign_op)
-    
 
 
 
@@ -107,17 +51,13 @@ if __name__ == '__main__':
         # Create placeholders for input and output
         inp = tf.placeholder(tf.float32,shape=[None,224,224,4],name='input')
         label =  tf.placeholder(tf.float32,shape=[None,224,224],name='label')
-           
-        #Resize label. Hack add third dim 
-        h_label = tf.expand_dims(label,3)        
-        label_resized = tf.image.resize_images(h_label,56,56)
-        #label_resized = tf.squeeze(label_resized)
+        h_label = tf.expand_dims(label,3)     
+        label_reshaped = tf.reshape(h_label,[-1,(224*224)]) 
             
-        label_reshaped = tf.reshape(label_resized,[-1,(56*56)]) 
-            
-        coarse_net_builder = CoarseNet(HEAD)
-        net,end_points = coarse_net_builder.build(inp)
-            
+        refine_net = RefineNet(inp,HEAD,'exp/test3/iters-24309')
+        net,end_points = refine_net.net,refine_net.end_points
+        
+        net = tf.reshape(net, [-1,(224*224)], name='out_refine_net_reshape')    
         # Add the loss layer
         loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
                                     net, label_reshaped))
@@ -128,10 +68,10 @@ if __name__ == '__main__':
         learning_rate = tf.train.exponential_decay(0.01, global_step_var, 10,
                                        0.1, staircase=True)
             
-        optimizer = tf.train.GradientDescentOptimizer(0.0001)
+        optimizer = tf.train.GradientDescentOptimizer(0.01)
         #optimizer = tf.train.MomentumOptimizer(0.01,0.9)
             
-        gradients = optimizer.compute_gradients(loss)
+        gradients = optimizer.compute_gradients(loss,refine_net.refine_variables())
             
         for grad, var in gradients:
             if grad is not None:
@@ -148,9 +88,9 @@ if __name__ == '__main__':
         init_op = tf.initialize_variables([global_step_var])
             
         # Testing
-        out=tf.reshape(tf.sigmoid(net),[-1,56,56,1])
+        out=tf.reshape(tf.sigmoid(net),[-1,224,224,1])
             
-        tf.image_summary('/label',label_resized)
+        tf.image_summary('/label',h_label)
         tf.image_summary('/output',out)
         tf.scalar_summary('/loss', loss)
         
@@ -162,14 +102,16 @@ if __name__ == '__main__':
             checkpoint_file = tf.train.latest_checkpoint(EXP_DIR);
             if checkpoint_file:
                 logger.info('Initializing using checkpoint file:{}'.format(checkpoint_file))
-                saver.restore(sess, checkpoint_file)
-
+                restorer = tf.train.Saver([global_step_var])
+                refine_net.initialize(sess,checkpoint_file)
+                restorer.restore(sess, checkpoint_file)
+                
             else :   
                 logger.info('Initializing using default weights')
                 # Initialize the weights
-                initHead(sess,HEAD,net)
-                initTail(sess,net)
+                refine_net.initialize(sess)
                 sess.run(init_op)
+                #start_epoch = global_step_var.eval(sess)
             
             merged_summary = tf.merge_all_summaries()
             summary_writer = tf.train.SummaryWriter(EVENTS_DIR, sess.graph)

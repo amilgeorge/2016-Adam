@@ -25,7 +25,7 @@ class SampleInputProvider:
         self.trainsetInfo = np.loadtxt(os.path.join(self.BASE_DIR,\
                         self.IMAGESETS,'train.txt'), dtype=bytes,unpack=False).astype(str)
         
-        #self.trainsetInfo = self.trainsetInfo[1:10,:]
+        #self.trainsetInfo = self.trainsetInfo[1:2,:]
         self.db = self.createDB()
     
     class DB: 
@@ -138,25 +138,7 @@ class SampleInputProvider:
         
         return mask
     
-    def read_rgb_image(filepath):
-        rgb_img = ndimage.imread(filepath)
-        width = height = 224
-        img_width = rgb_img.shape[1]
-        img_height = rgb_img.shape[0]
-    
-        # scale such that smaller dimension is 256
-        if img_width < img_height:
-            factor = 256.0 / img_width
-        else:
-            factor = 256.0 / img_height
-        rgb_img = transform.rescale(rgb_img, factor, preserve_range=True)
-    
-        # crop randomly
-        width_start = np.random.randint(0, rgb_img.shape[1] - width)
-        height_start = np.random.randint(0, rgb_img.shape[0] - height)
-    
-        rgb_img = rgb_img[height_start:height_start + height, width_start:width_start + width]
-        return rgb_img
+   
 
 if __name__ == '__main__':
     provider = SampleInputProvider()
