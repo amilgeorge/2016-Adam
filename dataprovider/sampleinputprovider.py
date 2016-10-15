@@ -8,11 +8,27 @@ Created on Mon Sep 19 18:30:04 2016
 import os
 import numpy as np
 from skimage import io,transform
-import matplotlib.pyplot as plt
 import re
 from dataprovider.preprocess import vgg_preprocess
+from dataprovider.davis import DataAccessHelper
+from numpy import dtype
    
-
+def prepare_input(img,prev_mask):
+    
+    mask = np.expand_dims(prev_mask,axis=2)    
+    
+    # Concatenate images
+    inp_img =  np.concatenate((img, mask), 2)
+    
+    # Apend axis for batch size
+    inp_img = np.expand_dims(inp_img,axis=0)    
+    
+    
+    inp_img = vgg_preprocess(inp_img)
+    
+    return inp_img
+    
+    
 class SampleInputProvider:
     
     BASE_DIR = os.path.join('/work/george','DAVIS')
@@ -21,11 +37,24 @@ class SampleInputProvider:
     RESIZE_HEIGHT = 224
     RESIZE_WIDTH = 224
     
-    def __init__(self):
+    COARSE_OUT_HEIGHT = 56
+    COARSE_OUT_WIDTH = 56
+    
+    def __init__(self,is_coarse=True,is_dummy = False):
+        
+        self.data_helper = DataAccessHelper()
+        self.resize = [SampleInputProvider.RESIZE_HEIGHT,SampleInputProvider.RESIZE_WIDTH]
+        if is_coarse:
+            self.weights_resize = [SampleInputProvider.COARSE_OUT_HEIGHT,SampleInputProvider.COARSE_OUT_WIDTH]
+        else:
+            self.weights_resize = [SampleInputProvider.RESIZE_HEIGHT,SampleInputProvider.RESIZE_WIDTH]
+        
         self.trainsetInfo = np.loadtxt(os.path.join(self.BASE_DIR,\
                         self.IMAGESETS,'train.txt'), dtype=bytes,unpack=False).astype(str)
         
-        #self.trainsetInfo = self.trainsetInfo[1:2,:]
+        if is_dummy:
+            self.trainsetInfo = self.trainsetInfo[247:250,:]
+        
         self.db = self.createDB()
     
     class DB: 
@@ -40,7 +69,7 @@ class SampleInputProvider:
         def __init__(self,db, batch_size):
             self.db=db
             numImages = self.db.images.shape[0]
-            self.sequence_info =np.random.permutation( list(range(numImages)))
+            self.sequence_info = np.random.permutation(list(range(numImages)))
             self.index = 0
             self.batch_size = batch_size
           
@@ -59,6 +88,7 @@ class SampleInputProvider:
                 # Read images and labels 
                 images = self.db.images[selected_indexes,:,:,:]
                 labels = self.db.labels[selected_indexes,:,:]
+                weights = self.db.weights[selected_indexes,:,:]
 
                 images = (images*255)
                 images = vgg_preprocess(images)
@@ -67,7 +97,7 @@ class SampleInputProvider:
                 batch = SampleInputProvider.DataBatch()
                 batch.images = images
                 batch.labels = labels
-                
+                batch.weights = weights
                 self.index += self.batch_size
                 return batch
             else:
@@ -87,24 +117,37 @@ class SampleInputProvider:
         return prevMaskFile
         
     def createDB(self):
-        
-        trainSetInfo = self.trainsetInfo
-        numImages = trainSetInfo.shape[0]
-        db = SampleInputProvider.DB()
-        db.images = np.zeros([numImages,self.RESIZE_HEIGHT,self.RESIZE_WIDTH,4])
-        db.labels = np.zeros([numImages,self.RESIZE_HEIGHT,self.RESIZE_WIDTH])
-        db.filenames = []
-        
-        for i in range(numImages):
-            imageFile = trainSetInfo[i,0]
-            labelFile = trainSetInfo[i,1]
-            prevMaskFile = self.getPrevMaskFile(labelFile)
-            image = self.readImage(imageFile,prevMaskFile)
-            label = self.readLabel(labelFile)
-            db.images[i,:,:,:] = image
-            db.labels[i,:,:] = label
-            db.filenames.append(imageFile)
-        return db
+        #import cPickle as pickle
+        cached_db = '/work/george/cache/davisdb.pickle'
+        if os.path.isfile(cached_db):
+        #    with open(cached_db,'rb') as f:  
+        #        db = 
+        #    return db
+            pass
+        else:
+            trainSetInfo = self.trainsetInfo
+            numImages = trainSetInfo.shape[0]
+            db = SampleInputProvider.DB()
+            db.images = np.zeros([numImages,self.RESIZE_HEIGHT,self.RESIZE_WIDTH,4])
+            db.labels = np.zeros([numImages,self.RESIZE_HEIGHT,self.RESIZE_WIDTH])
+            db.weights = np.zeros([numImages]+self.weights_resize,dtype=np.float32)
+            db.filenames = []
+            
+            for i in range(numImages):
+                imageFile = trainSetInfo[i,0]
+                labelFile = trainSetInfo[i,1]
+                prevMaskFile = self.getPrevMaskFile(labelFile)
+                image = self.readImage(imageFile,prevMaskFile)
+                label = self.readLabel(labelFile)
+                db.images[i,:,:,:] = image
+                db.labels[i,:,:] = label
+                db.weights[i,:,:] = self.data_helper.get_weight_map(imageFile, resize = self.weights_resize)
+                db.filenames.append(imageFile)
+            
+            #with open(cached_db,'wb') as f:  
+            #    pickle.dump(db,f)
+            
+            return db
             
     def readImage(self,imageFile,prevMaskFile):
         

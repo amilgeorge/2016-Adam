@@ -13,6 +13,7 @@ from common.logger import getLogger
 from common.diskutils import ensure_dir
 from skimage import io
 from net.refinenet import RefineNet
+from ops.loss import weighted_cross_entropy
 import time
 import os
 
@@ -23,18 +24,10 @@ RESNET_50 = 'resnet_v1_50'
 HEAD = RESNET_50
 TAIL = 'tail'
 
-RUN_ID = "refine-test_1"
+RUN_ID = "r-coarse-weighted-f5-5-4"
 EVENTS_DIR = os.path.join('events',RUN_ID)#time.strftime("%Y%m%d-%H%M%S")
 EXP_DIR = os.path.join('exp',RUN_ID)
 LOGS_DIR = os.path.join('logs',RUN_ID)
-
-
-    
-def init_refine(session,net):
-    varsTail = tf.get_collection(tf.GraphKeys.VARIABLES,scope = TAIL)
-    init_op = tf.initialize_variables(varsTail)
-    session.run(init_op)
-    
 
 
 
@@ -50,18 +43,22 @@ if __name__ == '__main__':
     
         # Create placeholders for input and output
         inp = tf.placeholder(tf.float32,shape=[None,224,224,4],name='input')
-        label =  tf.placeholder(tf.float32,shape=[None,224,224],name='label')
+        label = tf.placeholder(tf.float32,shape=[None,224,224],name='label')
+        weights = tf.placeholder(tf.float32,shape=[None,224,224],name='weights')
+
         h_label = tf.expand_dims(label,3)     
         label_reshaped = tf.reshape(h_label,[-1,(224*224)]) 
+        weights_reshaped = tf.reshape(weights, [-1,(224*224)])
             
-        refine_net = RefineNet(inp,HEAD,'exp/test3/iters-24309')
+        refine_net = RefineNet(inp,HEAD,'exp/coarse-weighted-f5-5/iters-14000')
         net,end_points = refine_net.net,refine_net.end_points
         
         net = tf.reshape(net, [-1,(224*224)], name='out_refine_net_reshape')    
         # Add the loss layer
-        loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
-                                    net, label_reshaped))
-            
+        loss = weighted_cross_entropy( net, label_reshaped,weights_reshaped)
+        loss = tf.reduce_mean(loss)
+        
+        loss_unweighted = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(net, label_reshaped))    
         # Declare the optimizer
         global_step_var = tf.Variable(0, trainable=False)
             
@@ -80,11 +77,11 @@ if __name__ == '__main__':
             
         apply_gradient_op = optimizer.apply_gradients(gradients, global_step_var)
             
-        max_iters = 150000
+        max_iters = 15000
         batch_size = 16
             
         # Input Provider
-        inputProvider = SampleInputProvider()    
+        inputProvider = SampleInputProvider(is_coarse=False)    
         init_op = tf.initialize_variables([global_step_var])
             
         # Testing
@@ -93,6 +90,7 @@ if __name__ == '__main__':
         tf.image_summary('/label',h_label)
         tf.image_summary('/output',out)
         tf.scalar_summary('/loss', loss)
+        tf.scalar_summary('/loss_unweighted',loss_unweighted)
         
         saver = tf.train.Saver(max_to_keep = 10)
         #saver.export_meta_graph("metagraph.meta", as_text=True)        
@@ -124,20 +122,25 @@ if __name__ == '__main__':
                     if (step >= max_iters):
                         break
                     #logger.debug('epoc:{}, seq_no{}'.format(step, i))
-                    result = sess.run([apply_gradient_op, loss, merged_summary], 
+                    result = sess.run([apply_gradient_op, loss, merged_summary,loss_unweighted], 
                                       feed_dict={inp:sequence_batch.images,
-                                                label:sequence_batch.labels})
+                                                label:sequence_batch.labels,
+                                                weights:sequence_batch.weights})
                     loss_value = result[1]
-                    logger.info('iters:{}, seq_no:{} loss :{}'.format(step, i, loss_value))
-                    summary_writer.add_summary(result[2], step )
+                    loss_unweighted_value = result[3]
+                    logger.info('iters:{}, seq_no:{} loss :{} loss_unweighted:{} '.format(step, i, loss_value,loss_unweighted_value))
+                    
+                    if step%100 ==0:
+                        summary_writer.add_summary(result[2], step )
     
                     
                     #io.imshow(out.eval())
                     #pass
-                logger.info('Saving weights.')
-                saver.save(sess, os.path.join(EXP_DIR,'iters'),global_step = step)
-                logger.info('Flushing .')
-                summary_writer.flush()
+                    if step % 1000 ==0:
+                        logger.info('Saving weights.')
+                        saver.save(sess, os.path.join(EXP_DIR,'iters'),global_step = step)
+                        logger.info('Flushing .')
+                        summary_writer.flush()
                 
             summary_writer.close()
     

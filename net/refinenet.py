@@ -5,9 +5,9 @@ Created on Oct 1, 2016
 '''
 
 from net.coarsenet import CoarseNet
-from main import RESNET_50
 import tensorflow as tf
 import net
+from dataprovider.preprocess import vgg_preprocess
 slim = tf.contrib.slim
 
 VGG_16 = 'vgg_16'
@@ -21,12 +21,13 @@ class RefineNet(object):
     '''
 
 
-    def __init__(self, inp,coarse_net_head,coarse_checkpoint_file):
+    def __init__(self, inp, coarse_net_head=RESNET_50,coarse_checkpoint_file):
         '''
         Constructor
         '''
+        self.inp = inp
         self.inp_sz = 224
-        self.coarse_net_head = RESNET_50
+        self.coarse_net_head = coarse_net_head
         self.coarse_checkpoint_file = coarse_checkpoint_file
         self.km = 32
         self.ks = 32
@@ -48,9 +49,17 @@ class RefineNet(object):
         
         self.net = net
         self.end_points = end_points
+        self.end_points['prediction'] = tf.reshape(tf.sigmoid(self.net),[-1,224,224,1])
     
-    
-    
+    def im_predict(self,session,batch):
+        if len(batch.shape) != 4:
+            raise ValueError('Input must be of size [batch_size, height, width, C>0]')
+        
+        predict = self.end_points['prediction']
+        result = session.run([predict],feed_dict={self.inp:batch})
+        
+        return result[0][0,:,:,0]
+        
     def refine_variables(self):
         """
         Get variables that belong to the refine network
@@ -61,20 +70,21 @@ class RefineNet(object):
         """
         Initialize the network
         
-        """
-        # Initialize the coarse network
-        self.coarse_net.initialize(session, self.coarse_checkpoint_file)
-        
+        """        
         ## Initialize the refine network
-        
-        
+               
         if checkpoint_file:
+            # Initialize the coarse network
+            self.coarse_net.initialize(session, checkpoint_file)
             # Continue from check point state
             vars_to_restore = self.refine_variables()
             restorer = tf.train.Saver(vars_to_restore)
             restorer.restore(session, checkpoint_file)
             
+            
         else:
+            # Initialize the coarse network
+            self.coarse_net.initialize(session, self.coarse_checkpoint_file)
             # Default initialization
             self.__init_refine(session)
     
@@ -152,13 +162,14 @@ class RefineNet(object):
         hlist = [end_points[key14d],end_points[key28d],end_points[key56d],end_points[key112d]]
         return hlist
     
-    def __add_sharp_mask_modules(self,net,end_points):
+    def __add_sharp_mask_modules(self,net,end_points,weight_decay=0.0001):
 
         with tf.variable_scope(REFINE_SCOPE) as sc:
             end_points_collection = sc.name + '_end_points'
             with slim.arg_scope([slim.conv2d, slim.fully_connected, slim.flatten],
+                                weights_regularizer=slim.l2_regularizer(weight_decay),
                             outputs_collections=end_points_collection):
-                # Horizontal output layers from the main net
+                # Horizontal output layers from the train_coarse_net net
                 inp_h_list = self.__horizontal_input_tensors(end_points)
                 
                 #Last output tensor ... 512-d 

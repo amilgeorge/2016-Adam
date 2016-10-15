@@ -60,9 +60,14 @@ class CoarseNet(object):
         if self.head  == VGG_16:
             basemodel_arg_scope = vgg.vgg_arg_scope()         
             with slim.arg_scope(basemodel_arg_scope):
-                net,endpoints_head = vgg.vgg_16(inp)
+                net,end_points_head = vgg.vgg_16(inp)
         elif self.head == RESNET_50:
-            with slim.arg_scope(resnet_v1.resnet_arg_scope()):
+            if self.is_training:
+                weight_decay = 0.0001
+            else:
+                weight_decay=0.0
+                
+            with slim.arg_scope(resnet_v1.resnet_arg_scope(weight_decay=weight_decay)):
                 net, end_points_head = resnet_v1.resnet_v1_50(inp,
                                                     is_training=self.is_training,
                                                     global_pool=False,
