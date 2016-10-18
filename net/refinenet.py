@@ -21,7 +21,7 @@ class RefineNet(object):
     '''
 
 
-    def __init__(self, inp, coarse_net_head=RESNET_50,coarse_checkpoint_file):
+    def __init__(self, inp, coarse_net_head=RESNET_50,coarse_checkpoint_file=None):
         '''
         Constructor
         '''

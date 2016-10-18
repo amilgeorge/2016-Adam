@@ -26,9 +26,28 @@ class DataAccessHelper(object):
         self.annotations_prefix = os.path.join('Annotations','480p')
         self.db_info = os.path.join('Annotations','db_info.yml')
     def read_db_info(self):
-        with open(self.db_info,'r') as f:
-            yaml.load(f)
+        with open(self.__fullpath(self.db_info),'r') as f:
+            db_info = yaml.load(f)
+            
+            return db_info
     
+    def train_sequence_list(self):
+        db_info = self.read_db_info()
+        db_sequences = db_info['sequences']
+        test_seqs = filter(lambda s: 'training' == s['set'] ,db_sequences)
+        
+        test_seq_names = [seq['name'] for seq in test_seqs]
+        return test_seq_names
+    
+    def test_sequence_list(self):
+        db_info = self.read_db_info()
+        db_sequences = db_info['sequences']
+        test_seqs = filter(lambda s: 'test' == s['set'] ,db_sequences)
+        
+        test_seq_names = [seq['name'] for seq in test_seqs]
+        return test_seq_names
+    
+        
     def image_path(self,sequence_name,frame_no):
         image_path = os.path.join(self.image_path_prefix,sequence_name,'{0:05}.jpg'.format(frame_no))
         return image_path
@@ -41,11 +60,9 @@ class DataAccessHelper(object):
         sequence_dir = self.__fullpath(os.path.join(self.image_path_prefix,sequence_name))
         
         img_collection = io.ImageCollection(sequence_dir+"/*.jpg")
-
-        frames = map(lambda fn:
-                int(os.path.splitext(os.path.basename(fn))[0]),img_collection)
-    
-        return frames
+	
+        frames = map(lambda fn: int(os.path.splitext(os.path.basename(fn))[0]),img_collection.files)
+        return list(frames)
     
     def split_path(self,path):
         
@@ -119,5 +136,7 @@ class DataAccessHelper(object):
         diffmap[diffmap==0]=1
         return diffmap
     
-   
+if __name__ == '__main__':
+    helper = DataAccessHelper()  
+    t = helper.test_sequecence_list()
     
