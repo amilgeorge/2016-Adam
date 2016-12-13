@@ -46,4 +46,10 @@ def vgg_preprocess(images):
     _B_MEAN = 103.94
     _M_MEAN = 127
     
-    return _mean_image_subtraction(images,[_R_MEAN,_G_MEAN,_B_MEAN,_M_MEAN])
+    channels = images.shape[3]
+    if channels ==7:
+        center = [_R_MEAN,_G_MEAN,_B_MEAN,_M_MEAN,_R_MEAN,_G_MEAN,_B_MEAN]
+    else: 
+        center = [_R_MEAN,_G_MEAN,_B_MEAN,_M_MEAN]
+        
+    return _mean_image_subtraction(images,center)

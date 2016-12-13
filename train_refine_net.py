@@ -24,7 +24,7 @@ RESNET_50 = 'resnet_v1_50'
 HEAD = RESNET_50
 TAIL = 'tail'
 
-RUN_ID = "r-coarse-weighted-f5-5-4"
+RUN_ID = "r-c-ch7-3-1"
 EVENTS_DIR = os.path.join('events',RUN_ID)#time.strftime("%Y%m%d-%H%M%S")
 EXP_DIR = os.path.join('exp',RUN_ID)
 LOGS_DIR = os.path.join('logs',RUN_ID)
@@ -42,7 +42,7 @@ if __name__ == '__main__':
     with tf.Graph().as_default():
     
         # Create placeholders for input and output
-        inp = tf.placeholder(tf.float32,shape=[None,224,224,4],name='input')
+        inp = tf.placeholder(tf.float32,shape=[None,224,224,7],name='input')
         label = tf.placeholder(tf.float32,shape=[None,224,224],name='label')
         weights = tf.placeholder(tf.float32,shape=[None,224,224],name='weights')
 
@@ -50,7 +50,7 @@ if __name__ == '__main__':
         label_reshaped = tf.reshape(h_label,[-1,(224*224)]) 
         weights_reshaped = tf.reshape(weights, [-1,(224*224)])
             
-        refine_net = RefineNet(inp,HEAD,'exp/coarse-weighted-f5-5/iters-14000')
+        refine_net = RefineNet(inp,HEAD,'exp/c-ch7-3/iters-20000')
         net,end_points = refine_net.net,refine_net.end_points
         
         net = tf.reshape(net, [-1,(224*224)], name='out_refine_net_reshape')    

@@ -100,6 +100,14 @@ class DataAccessHelper(object):
             
         return image
     
+    def construct_image_path(self,image_path,offset = None):
+        name,frame_no = self.split_path(image_path)
+        
+        if offset !=None:
+            frame_no = (frame_no + offset) if (frame_no + offset) >=0 else 0
+        
+        return self.image_path(name, frame_no) 
+    
     def construct_label_path(self,image_path,offset = None):
         name,frame_no = self.split_path(image_path)
         
@@ -121,6 +129,10 @@ class DataAccessHelper(object):
     
         label1 = self.read_label(label_path1, resize)
         label2 = self.read_label(label_path2, resize)
+    
+        return self.__get_weight_map(label1, label2)
+    
+    def __get_weight_map(self,label1,label2):
         
         diffmap = label1 - label2
         diffmap = np.absolute(diffmap)
