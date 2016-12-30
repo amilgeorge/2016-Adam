@@ -29,7 +29,8 @@ class TransformParams(object):
         self.scale_factor = s
         
     def set_shear_in_degrees(self,angle):
-        self.shear = np.deg2rad(angle)
+        if angle :
+            self.shear = np.deg2rad(angle)
     
     def set_flip_v(self,flip):
         self.flip_v = flip
@@ -38,11 +39,13 @@ class TransformParams(object):
         self.flip_h = flip
     
     def set_translation_factor(self,t):
-        assert len(t) == 2, "expected tuple or array of len 2"
+        assert t==None or len(t) == 2 , "expected tuple or array of len 2"
         self.translation_factor = t    
     
     def get_translation(self,image_shape):
         assert len(image_shape)>=2, "ndims should be greater than or equal to 2"
+        if self.translation_factor is None:
+            return None
         return (image_shape[0]*self.translation_factor[1],image_shape[1]*self.translation_factor[0])
         
 class ImageRandomTransformer(object):
@@ -95,10 +98,10 @@ class ImageRandomTransformer(object):
         
         # Rotation Interval (in degrees)
         default_config[self.CONFIG_ROTATION_ANGLE_STEP] = 15  
-        default_config[self.CONFIG_ROTATION_RANGE] = [0,180]
+        default_config[self.CONFIG_ROTATION_RANGE] = [-30,30]
         
         # Scale Factors
-        default_config[self.CONFIG_SCALE_FACTOR_RANGE] = [0.8,1.2]
+        default_config[self.CONFIG_SCALE_FACTOR_RANGE] = [0.7,1.3]
         default_config[self.CONFIG_SCALE_FACTOR_STEP] = 0.1
         
         # Shear configuration (in degrees)
@@ -107,7 +110,7 @@ class ImageRandomTransformer(object):
         
         # Translation with respect to axis dimensions
         default_config[self.CONFIG_TRANSLATION_FACTOR_RANGE] = [-0.1,0.1]
-        default_config[self.CONFIG_TRANSLATION_FACTOR_STEP] = 0.01
+        default_config[self.CONFIG_TRANSLATION_FACTOR_STEP] = None
         
         return default_config
 
@@ -203,7 +206,6 @@ class ImageRandomTransformer(object):
         transform_params.set_rotation_in_degrees(self._generate_param_rotation())
         transform_params.set_scale_factor(self._generate_param_scale())
         transform_params.set_translation_factor(self._generate_param_translate())
-        transform_params.set_scale_factor(self._generate_param_scale())
         transform_params.set_shear_in_degrees(self._generate_param_shear())
         
         return transform_params
@@ -217,15 +219,18 @@ class ImageRandomTransformer(object):
     
     def get_transformed(self,image,transform_params):
         
-        t = transform_params.get_translation(image.shape)        
+        if(transform_params.flip_h):
+            image = np.fliplr(image)
+        if(transform_params.flip_v):
+            image = np.flipud(image)
+            
+        t = transform_params.get_translation(image.shape)  
+              
         tform = transform.AffineTransform(scale=transform_params.scale_factor,rotation=transform_params.rotation,
                                   shear=transform_params.shear,translation=t)
         
         warped = transform.warp(image,tform)
-        if(transform_params.flip_h):
-            warped = np.fliplr(warped)
-        if(transform_params.flip_v):
-            warped = np.flipud(warped)
+     
        
         return warped
             

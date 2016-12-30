@@ -4,16 +4,21 @@ Created on Mon Sep 19 18:30:04 2016
 
 @author: george
 """
-
+import matplotlib
+#matplotlib.use('Agg')
 import os
 import numpy as np
 from skimage import io,transform,morphology
 import re
 from dataprovider.preprocess import vgg_preprocess
 from dataprovider.davis import DataAccessHelper
+from dataprovider.transformer import ImageRandomTransformer
 from numpy import dtype, size
 import random
-#import matplotlib.pyplot as plt
+
+import matplotlib.pyplot as plt
+from binstar_client.utils.notebook.data_uri import Image
+from dataprovider import inputhelper
 
 davis = DataAccessHelper()
 def prepare_input_ch7(image_path,prev_mask):
@@ -106,10 +111,26 @@ class SampleInputProvider:
             self.db=db
             self.is_training = is_training
             numImages = self.db.images.shape[0]
+            self.img_size = list(self.db.images.shape[1:3])
+            self.weights_size = list(self.db.weights.shape[1:3])
+            self.img_channels = self.db.images.shape[3]
             self.sequence_info = np.random.permutation(list(range(numImages)))
             self.index = 0
             self.batch_size = batch_size
+            self.transformer = ImageRandomTransformer(self._get_transform_config())
+        
           
+        def _get_transform_config(self):
+            config ={}
+            config[ImageRandomTransformer.CONFIG_ROTATION_RANGE] =[-10,10]
+            config[ImageRandomTransformer.CONFIG_ROTATION_ANGLE_STEP] = 5
+            config[ImageRandomTransformer.CONFIG_SHEAR_RANGE] = [-5,5]
+            config[ImageRandomTransformer.CONFIG_SHEAR_ANGLE_STEP] = None
+            config[ImageRandomTransformer.CONFIG_SCALE_FACTOR_RANGE] = [0.7,1.3]
+            config[ImageRandomTransformer.CONFIG_TRANSLATION_FACTOR_STEP] = 0.1
+            config[ImageRandomTransformer.CONFIG_TRANSLATION_FACTOR_RANGE] = [-0.2,0.2]
+
+            return config
         
         def __iter__(self):
             return self
@@ -123,14 +144,33 @@ class SampleInputProvider:
                 selected_indexes = self.sequence_info[self.index:toIndex]
                 
                 # Read images and labels 
-                images = self.db.images[selected_indexes,:,:,:]
-                labels = self.db.labels[selected_indexes,:,:]
-                weights = self.db.weights[selected_indexes,:,:]
+                images = np.zeros([self.batch_size]+self.img_size+[self.img_channels],dtype = np.float32)
+                labels = np.zeros([self.batch_size]+self.img_size)
+                weights = np.empty([self.batch_size]+self.weights_size,dtype=np.float32)
+                for i,idx in enumerate(selected_indexes):
+                    label_dim = np.expand_dims(self.db.labels[idx,:,:], axis=2)
+                    stked = np.concatenate((self.db.images[idx,:,:,:],label_dim),axis = 2)
+                    
+                    stked,_ = self.transformer.get_random_transformed(stked)
+                    image = stked[:,:,0:7]
+                    if self.is_training:
+                        image = self.process_prev_mask_in_image(image)
+                    
+                    label = np.uint8(stked[:,:,7])    
+                    images[i,:,:,:]=image
+                    labels[i,:,:]=label
+                    weights[i,:,:] = inputhelper.get_weights_classwise2(label,resize=self.weights_size,factor=3)
+                    #plt.figure()
+                    #plt.imshow(weights[i,:,:])
+                    #self._debug(image,label)
                 
-                if self.is_training:
-                    images = self.process_prev_mask_in_images(images)
+                #images = self.db.images[selected_indexes,:,:,:]
+                #labels = self.db.labels[selected_indexes,:,:]
+                #weights = self.db.weights[selected_indexes,:,:]
                 
+               
                 
+               
 
                 images = (images*255)
                 images = vgg_preprocess(images)
@@ -145,6 +185,29 @@ class SampleInputProvider:
             else:       
                 raise StopIteration()
         
+        def _debug(self,img,label):
+            plt.subplot(2,2,1)
+            frame = plt.gca()
+            frame.axes.set_title('Img')
+            frame.axes.get_xaxis().set_visible(False)
+            frame.axes.get_yaxis().set_visible(False)
+            plt.imshow(np.uint8(img[:,:,0:3]*255))
+            plt.subplot(2,2,2)
+            frame = plt.gca()
+            frame.axes.set_title('Prev Img')
+            frame.axes.get_xaxis().set_visible(False)
+            frame.axes.get_yaxis().set_visible(False)
+            plt.imshow(np.uint8(img[:,:,4:7]*255))
+            plt.subplot(2,2,3)
+            frame = plt.gca()
+            frame.axes.get_xaxis().set_visible(False)
+            frame.axes.get_yaxis().set_visible(False)
+            plt.imshow(np.uint8(label))
+            plt.subplot(2,2,4)
+            frame = plt.gca()
+            frame.axes.get_xaxis().set_visible(False)
+            frame.axes.get_yaxis().set_visible(False)
+            plt.imshow(img[:,:,3])
         def get_data(self,selected_indexes):  
             if self.is_training:
                 pass
@@ -152,6 +215,20 @@ class SampleInputProvider:
                 pass
                 #image = transform.resize(image,resize)
                 #return  
+        
+        def process_prev_mask_in_image(self,image):
+            MASK_CHANNEL = 3
+            prev_mask = image[:,:,MASK_CHANNEL]
+                #plt.figure()
+                #plt.subplot(1,2,1)
+                #plt.imshow(prev_mask)
+            prev_mask_mod = self.add_noise_prev_mask(prev_mask)
+            image[:,:,MASK_CHANNEL] = np.round(prev_mask_mod)  
+           
+                #plt.subplot(1,2,2)
+                #plt.imshow(prev_mask_mod)  
+                #plt.show()
+            return image
              
         def process_prev_mask_in_images(self,images):
             MASK_CHANNEL = 3
@@ -161,7 +238,7 @@ class SampleInputProvider:
                 #plt.subplot(1,2,1)
                 #plt.imshow(prev_mask)
                 prev_mask_mod = self.add_noise_prev_mask(prev_mask)
-                images[i,:,:,MASK_CHANNEL] = prev_mask_mod  
+                images[i,:,:,MASK_CHANNEL] = np.round(prev_mask_mod)  
            
                 #plt.subplot(1,2,2)
                 #plt.imshow(prev_mask_mod)  
@@ -176,12 +253,12 @@ class SampleInputProvider:
             #options = [NONE_]
             ch = random.choice(options)
             if ch == ERODE:
-                sz = random.randint(1,4)*5
+                sz = random.randint(2,4)
                 new_mask = morphology.erosion(prev_mask,np.ones([sz,sz]))
                 return new_mask
             elif ch == DILATE:
 
-                sz = random.randint(1,4)*5
+                sz = random.randint(2,4)
                 new_mask = morphology.dilation(prev_mask,np.ones([sz,sz]))
                 return new_mask
             else :
@@ -291,9 +368,9 @@ class SampleInputProvider:
         return mask
     
    
-
+    
 if __name__ == '__main__':
-    provider = SampleInputProvider(is_coarse=True,is_dummy=True)
+    provider = SampleInputProvider(is_coarse=False,is_dummy=True)
     for j in range(1,1000):
         input_batch = provider.sequence_batch_itr(16)
 

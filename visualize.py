@@ -36,6 +36,6 @@ def draw_masks(masks_dir,out_dir):
             
             
 if __name__ == '__main__':
-    masks_dir = '../Results/segnet-ch7-9-1/480p'
+    masks_dir = '../Results/segnet-ch7-aug-10-1/480p'
     out_dir = masks_dir+'-vis'
     draw_masks(masks_dir,out_dir)

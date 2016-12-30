@@ -6,6 +6,7 @@ Created on Dec 1, 2016
 import tensorflow as tf
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import dtypes
+from ops.segnet_loss import weighted_per_image_loss
 
 import os, sys
 import numpy as np
@@ -236,7 +237,7 @@ def weighted_loss(logits, labels, num_classes, head=None):
 
     return loss
 
-def cal_loss(logits, labels):
+def cal_loss(logits, labels, weights):
     """
     loss_weight = np.asarray([
       0.0616944799702,
@@ -262,14 +263,18 @@ def cal_loss(logits, labels):
       7.3614,
     ]) # class 0~10
     """
-    loss_weight = np.array([
-      1.0,
-      3.0,
-    ]) # class 0~1
+ 
     
     labels = tf.cast(labels, tf.int32)
     # return loss(logits, labels)
-    return weighted_loss(logits, labels, num_classes=NUM_CLASSES, head=loss_weight)
+    if weights is not None:
+        return weighted_per_image_loss(logits, labels, num_classes = NUM_CLASSES, weight_map=weights)
+    else:
+        loss_weight = np.array([
+      1.0,
+      10.0,
+    ]) # class 0~1
+        return weighted_loss(logits, labels, num_classes=NUM_CLASSES, head=loss_weight)
 
 def conv_layer_with_bn(inputT, shape, train_phase, activation=True, name=None):
     in_channel = shape[2]
@@ -331,7 +336,7 @@ def batch_norm_layer(inputT, is_training, scope):
                            updates_collections=None, center=False, scope=scope+"_bn", reuse = True))
 
 
-def inference(images, labels, phase_train):
+def inference(images, labels, phase_train,weights = None):
     #batch_size = BATCH_SIZE
     batch_size = tf.shape(images)[0]
     # norm1
@@ -404,7 +409,7 @@ def inference(images, labels, phase_train):
     if labels is None:
         return logit
     else:
-        loss = cal_loss(conv_classifier, labels)
+        loss = cal_loss(conv_classifier, labels,weights)
         return loss, logit
 
 def train(total_loss, global_step):

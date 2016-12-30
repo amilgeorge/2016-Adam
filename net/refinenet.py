@@ -21,7 +21,7 @@ class RefineNet(object):
     '''
 
 
-    def __init__(self, inp, coarse_net_head=RESNET_50,coarse_checkpoint_file=None):
+    def __init__(self, inp, is_training=False,coarse_net_head=RESNET_50,coarse_checkpoint_file=None):
         '''
         Constructor
         '''
@@ -33,12 +33,14 @@ class RefineNet(object):
         self.ks = 32
         self.out_stride = 16
         self.fsz = int(self.inp_sz/self.out_stride)
+        self.is_training_pl = is_training
+        self.stop_horizontal_grads = True
         self.build(inp)
-        
+
     
     def build(self,inp):
         
-        coarse_net_object = CoarseNet(inp,self.coarse_net_head,is_training=False)
+        coarse_net_object = CoarseNet(inp,head=self.coarse_net_head,is_training=self.is_training_pl)
         self.coarse_net = coarse_net_object
         
         net = coarse_net_object.net
@@ -84,7 +86,10 @@ class RefineNet(object):
             
         else:
             # Initialize the coarse network
-            self.coarse_net.initialize(session, self.coarse_checkpoint_file)
+            if self.coarse_checkpoint_file is None:
+                self.coarse_net.initialize(session)
+            else:
+                self.coarse_net.initialize(session, self.coarse_checkpoint_file)
             # Default initialization
             self.__init_refine(session)
     
@@ -160,6 +165,10 @@ class RefineNet(object):
         
         # Add them to a list
         hlist = [end_points[key14d],end_points[key28d],end_points[key56d],end_points[key112d]]
+
+        if self.stop_horizontal_grads:
+            hlist = [tf.stop_gradient(h) for h in hlist]
+
         return hlist
     
     def __add_sharp_mask_modules(self,net,end_points,weight_decay=0.0001):

@@ -6,3 +6,5 @@ events/
 *.pyc
 *.log
 *.prefs
+.idea/
+nohup*
