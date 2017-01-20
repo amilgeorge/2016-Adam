@@ -19,19 +19,21 @@ import random
 import matplotlib.pyplot as plt
 from binstar_client.utils.notebook.data_uri import Image
 from dataprovider import inputhelper
+IMAGE_HEIGHT = 360
+IMAGE_WIDTH = 480
 
 davis = DataAccessHelper()
 def prepare_input_ch7(image_path,prev_mask):
     
     # Read image
-    img = davis.read_image(image_path, [224,224])
+    img = davis.read_image(image_path, [IMAGE_HEIGHT,IMAGE_WIDTH])
     img = img*255
     
     mask = np.expand_dims(prev_mask,axis=2)    
     
     # Read previous image
     prev_img_path = davis.construct_image_path(image_path, offset= -1)
-    prev_img = davis.read_image(prev_img_path, [224,224])
+    prev_img = davis.read_image(prev_img_path, [IMAGE_HEIGHT,IMAGE_WIDTH])
     prev_img = prev_img*255
     
     # Concatenate images
@@ -77,14 +79,14 @@ class SampleInputProvider:
     COARSE_OUT_HEIGHT = 56
     COARSE_OUT_WIDTH = 56
     
-    def __init__(self,is_coarse=True,is_dummy = False):
+    def __init__(self,resize = [RESIZE_HEIGHT,RESIZE_WIDTH],is_dummy = False, is_coarse=False):
         
         self.davis = DataAccessHelper()
-        self.resize = [SampleInputProvider.RESIZE_HEIGHT,SampleInputProvider.RESIZE_WIDTH]
+        self.resize = resize
         if is_coarse:
             self.weights_resize = [SampleInputProvider.COARSE_OUT_HEIGHT,SampleInputProvider.COARSE_OUT_WIDTH]
         else:
-            self.weights_resize = [SampleInputProvider.RESIZE_HEIGHT,SampleInputProvider.RESIZE_WIDTH]
+            self.weights_resize = resize
         
         self.train_set_info = np.loadtxt(os.path.join(self.BASE_DIR,\
                         self.IMAGESETS,'train.txt'), dtype=bytes,unpack=False).astype(str)
@@ -156,12 +158,30 @@ class SampleInputProvider:
                     if self.is_training:
                         image = self.process_prev_mask_in_image(image)
                     
-                    label = np.uint8(stked[:,:,7])    
+                    label = np.uint8(stked[:,:,7]) 
+                    ## Label as changes
+                    prev_mask = np.uint8(stked[:,:,3])  
+#                    label_changes = inputhelper.get_label_changes(label, prev_mask)
+#                    label = label_changes
+#                     plt.figure()
+#                     plt.subplot(3,1,1)
+#                     plt.imshow(label)
+#                     plt.subplot(3,1,2)
+#                     plt.imshow(prev_mask)
+#                     plt.subplot(3,1,3)
+#                     plt.imshow(label_changes)
+#                     plt.colorbar()
+                    #self._debug(image,label)
                     images[i,:,:,:]=image
                     labels[i,:,:]=label
-                    weights[i,:,:] = inputhelper.get_weights_classwise2(label,resize=self.weights_size,factor=3)
+                    weights[i,:,:] = inputhelper.get_weights_classwise_osvos(label)
                     #plt.figure()
+                    #plt.subplot(2,1,1)
                     #plt.imshow(weights[i,:,:])
+                    #plt.colorbar()
+                    #plt.subplot(2,1,2)
+                    #plt.imshow(label)
+                    #plt.colorbar()
                     #self._debug(image,label)
                 
                 #images = self.db.images[selected_indexes,:,:,:]
@@ -292,8 +312,8 @@ class SampleInputProvider:
         else:
             numImages = data_set_info.shape[0]
             db = SampleInputProvider.DB()
-            db.images = np.zeros([numImages,self.RESIZE_HEIGHT,self.RESIZE_WIDTH,SampleInputProvider.NUM_CHANNELS])
-            db.labels = np.zeros([numImages,self.RESIZE_HEIGHT,self.RESIZE_WIDTH])
+            db.images = np.zeros([numImages]+self.resize+[SampleInputProvider.NUM_CHANNELS])
+            db.labels = np.zeros([numImages]+self.resize)
             db.weights = np.zeros([numImages]+self.weights_resize,dtype=np.float32)
             db.filenames = []
             

@@ -22,7 +22,7 @@ CHECKPOINT_4 = 'exp/c-ch7-aug-drop-1/iters-17000'
 CHECKPOINT_5 = 'exp/c-ch7-aug-drop-reg-3/iters-10000'
 CHECKPOINT_6 = 'exp/c-ch7-aug-drop-reg-4/iters-4000'
 
-CHECKPOINT_18 = 'exp/c-ch7-aug4-weightedlossP3-3/iters-19500'
+CHECKPOINT_18 = 'exp/c-ch7-aug4-weightedlossP3-3/iters-30000'
 
 CHECKPOINT = CHECKPOINT_18
 davis = DataAccessHelper()

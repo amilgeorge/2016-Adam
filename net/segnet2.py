@@ -38,11 +38,11 @@ LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
 
 INITIAL_LEARNING_RATE = 0.001      # Initial learning rate.
 EVAL_BATCH_SIZE = 1
-BATCH_SIZE = 16
+BATCH_SIZE = 4
 READ_DATA_SIZE = 100
 # for CamVid
-IMAGE_HEIGHT = 224
-IMAGE_WIDTH = 224
+IMAGE_HEIGHT = 360
+IMAGE_WIDTH = 480
 IMAGE_DEPTH = 7
 
 NUM_CLASSES = 2
@@ -272,7 +272,7 @@ def cal_loss(logits, labels, weights):
     else:
         loss_weight = np.array([
       1.0,
-      10.0,
+      3.0,
     ]) # class 0~1
         return weighted_loss(logits, labels, num_classes=NUM_CLASSES, head=loss_weight)
 
@@ -289,7 +289,7 @@ def conv_layer_with_bn(inputT, shape, train_phase, activation=True, name=None):
       """
       kernel = _variable_with_weight_decay('ort_weights', shape=shape, initializer=orthogonal_initializer(), wd=None)
       conv = tf.nn.conv2d(inputT, kernel, [1, 1, 1, 1], padding='SAME')
-      biases = _variable_on_cpu('biases', [out_channel], tf.constant_initializer(0.0))
+      biases = _variable_on_cpu('biases', [out_channel], tf.constant_initializer(0.1))
       bias = tf.nn.bias_add(conv, biases)
       if activation is True:
         conv_out = tf.nn.relu(batch_norm_layer(bias, train_phase, scope.name))
@@ -339,6 +339,8 @@ def batch_norm_layer(inputT, is_training, scope):
 def inference(images, labels, phase_train,weights = None):
     #batch_size = BATCH_SIZE
     batch_size = tf.shape(images)[0]
+    IMG_HEIGHT = IMAGE_HEIGHT
+    IMG_WIDTH = IMAGE_WIDTH
     # norm1
     #norm1 = tf.nn.lrn(images, depth_radius=5, bias=1.0, alpha=0.0001, beta=0.75,
     #            name='norm1')
@@ -372,25 +374,25 @@ def inference(images, labels, phase_train,weights = None):
     # upsample4
     # Need to change when using different dataset out_w, out_h
     # upsample4 = upsample_with_pool_indices(pool4, pool4_indices, pool4.get_shape(), out_w=45, out_h=60, scale=2, name='upsample4')
-    upsample4 = deconv_layer(pool4, [2, 2, 64, 64], [batch_size, 28, 28, 64], 2, "up4")
+    upsample4 = deconv_layer(pool4, [2, 2, 64, 64], [batch_size, int(IMG_HEIGHT/8), int(IMG_WIDTH/8), 64], 2, "up4")
     # decode 4
     conv_decode4 = conv_layer_with_bn(upsample4, [7, 7, 64, 64], phase_train, False, name="conv_decode4")
 
     # upsample 3
     # upsample3 = upsample_with_pool_indices(conv_decode4, pool3_indices, conv_decode4.get_shape(), scale=2, name='upsample3')
-    upsample3= deconv_layer(conv_decode4, [2, 2, 64, 64], [batch_size, 56, 56, 64], 2, "up3")
+    upsample3= deconv_layer(conv_decode4, [2, 2, 64, 64], [batch_size, int(IMG_HEIGHT/4), int(IMG_WIDTH/4), 64], 2, "up3")
     # decode 3
     conv_decode3 = conv_layer_with_bn(upsample3, [7, 7, 64, 64], phase_train, False, name="conv_decode3")
 
     # upsample2
     # upsample2 = upsample_with_pool_indices(conv_decode3, pool2_indices, conv_decode3.get_shape(), scale=2, name='upsample2')
-    upsample2= deconv_layer(conv_decode3, [2, 2, 64, 64], [batch_size, 112, 112, 64], 2, "up2")
+    upsample2= deconv_layer(conv_decode3, [2, 2, 64, 64], [batch_size, int(IMG_HEIGHT/2), int(IMG_WIDTH/2), 64], 2, "up2")
     # decode 2
     conv_decode2 = conv_layer_with_bn(upsample2, [7, 7, 64, 64], phase_train, False, name="conv_decode2")
 
     # upsample1
     # upsample1 = upsample_with_pool_indices(conv_decode2, pool1_indices, conv_decode2.get_shape(), scale=2, name='upsample1')
-    upsample1= deconv_layer(conv_decode2, [2, 2, 64, 64], [batch_size, 224, 224, 64], 2, "up1")
+    upsample1= deconv_layer(conv_decode2, [2, 2, 64, 64], [batch_size, IMG_HEIGHT, IMG_WIDTH, 64], 2, "up1")
     # decode4
     conv_decode1 = conv_layer_with_bn(upsample1, [7, 7, 64, 64], phase_train, False, name="conv_decode1")
     """ end of Decode """
@@ -400,7 +402,7 @@ def inference(images, labels, phase_train,weights = None):
         kernel = _variable_with_weight_decay('weights',
                                            shape=[1, 1, 64, NUM_CLASSES],
                                            initializer=msra_initializer(1, 64),
-                                           wd=0.0005)
+                                           wd=0.00001)
         conv = tf.nn.conv2d(conv_decode1, kernel, [1, 1, 1, 1], padding='SAME')
         biases = _variable_on_cpu('biases', [NUM_CLASSES], tf.constant_initializer(0.0))
         conv_classifier = tf.nn.bias_add(conv, biases, name=scope.name)
@@ -411,6 +413,200 @@ def inference(images, labels, phase_train,weights = None):
     else:
         loss = cal_loss(conv_classifier, labels,weights)
         return loss, logit
+
+
+def inference_vgg16(images, labels, phase_train, weights=None):
+    # batch_size = BATCH_SIZE
+    batch_size = tf.shape(images)[0]
+    IMG_HEIGHT = IMAGE_HEIGHT
+    IMG_WIDTH = IMAGE_WIDTH
+    # norm1
+    # norm1 = tf.nn.lrn(images, depth_radius=5, bias=1.0, alpha=0.0001, beta=0.75,
+    #            name='norm1')
+    norm1 = images
+
+    # conv1
+    conv1_1 = conv_layer_with_bn(norm1, [3, 3, IMAGE_DEPTH, 64], phase_train, name="conv1_1")
+    conv1_2 = conv_layer_with_bn(conv1_1, [3, 3, 64, 64], phase_train, name="conv1_2")
+
+    # pool1
+    pool1, pool1_indices = tf.nn.max_pool_with_argmax(conv1_2, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1],
+                                                      padding='SAME', name='pool1')
+
+    # conv2
+    conv2_1 = conv_layer_with_bn(pool1, [3, 3, 64, 128], phase_train, name="conv2_1")
+    conv2_2 = conv_layer_with_bn(conv2_1, [3, 3, 128,128], phase_train, name="conv2_2")
+
+    # pool2
+    pool2, pool2_indices = tf.nn.max_pool_with_argmax(conv2_2, ksize=[1, 2, 2, 1],
+                                                      strides=[1, 2, 2, 1], padding='SAME', name='pool2')
+    # conv3
+    conv3_1 = conv_layer_with_bn(pool2, [3, 3, 128, 256], phase_train, name="conv3_1")
+    conv3_2 = conv_layer_with_bn(conv3_1, [3, 3, 256, 256], phase_train, name="conv3_2")
+    conv3_3 = conv_layer_with_bn(conv3_2, [3, 3, 256, 256], phase_train, name="conv3_3")
+
+    # pool3
+    pool3, pool3_indices = tf.nn.max_pool_with_argmax(conv3_3, ksize=[1, 2, 2, 1],
+                                                      strides=[1, 2, 2, 1], padding='SAME', name='pool3')
+    # conv4
+    conv4_1 = conv_layer_with_bn(pool3, [3, 3, 256, 512], phase_train, name="conv4_1")
+    conv4_2 = conv_layer_with_bn(conv4_1, [3, 3, 512, 512], phase_train, name="conv4_2")
+    conv4_3 = conv_layer_with_bn(conv4_2, [3, 3, 512, 512], phase_train, name="conv4_3")
+
+    # pool4
+    pool4, pool4_indices = tf.nn.max_pool_with_argmax(conv4_3, ksize=[1, 2, 2, 1],
+                                                      strides=[1, 2, 2, 1], padding='SAME', name='pool4')
+
+    conv5_1 = conv_layer_with_bn(pool4, [3, 3, 512, 512], phase_train, name="conv5_1")
+    conv5_2 = conv_layer_with_bn(conv5_1, [3, 3, 512, 512], phase_train, name="conv5_2")
+    conv5_3 = conv_layer_with_bn(conv5_2, [3, 3, 512, 512], phase_train, name="conv5_3")
+
+
+    # pool5
+    pool5, pool5_indices = tf.nn.max_pool_with_argmax(conv5_3, ksize=[1, 2, 2, 1],
+                                                      strides=[1, 2, 2, 1], padding='SAME', name='pool5')
+    """ End of encoder """
+    """ start upsample """
+    # upsample4
+    # Need to change when using different dataset out_w, out_h
+    upsample5 = deconv_layer(pool5, [2, 2, 512, 512], [batch_size, int(ceil(IMG_HEIGHT / 16)), int(np.ceil(IMG_WIDTH / 16)), 512], 2, "up5")
+    conv_decode5_3 = conv_layer_with_bn(upsample5, [3, 3, 512, 512], phase_train, False, name="conv_decode5_3")
+    conv_decode5_2 = conv_layer_with_bn(conv_decode5_3, [3, 3, 512, 512], phase_train, False, name="conv_decode5_2")
+    conv_decode5_1 = conv_layer_with_bn(conv_decode5_2, [3, 3, 512, 512], phase_train, False, name="conv_decode5_1")
+
+    # upsample4 = upsample_with_pool_indices(pool4, pool4_indices, pool4.get_shape(), out_w=45, out_h=60, scale=2, name='upsample4')
+    upsample4 = deconv_layer(conv_decode5_1, [2, 2, 512, 512], [batch_size, int(IMG_HEIGHT / 8), int(IMG_WIDTH / 8), 512], 2, "up4")
+    # decode 4
+    conv_decode4_3 = conv_layer_with_bn(upsample4, [3, 3, 512, 512], phase_train, False, name="conv_decode4_3")
+    conv_decode4_2 = conv_layer_with_bn(conv_decode4_3, [3, 3, 512, 512], phase_train, False, name="conv_decode4_2")
+    conv_decode4_1 = conv_layer_with_bn(conv_decode4_2, [3, 3, 512, 256], phase_train, False, name="conv_decode4_1")
+
+    # upsample 3
+    # upsample3 = upsample_with_pool_indices(conv_decode4, pool3_indices, conv_decode4.get_shape(), scale=2, name='upsample3')
+    upsample3 = deconv_layer(conv_decode4_1, [2, 2, 256, 256], [batch_size, int(IMG_HEIGHT / 4), int(IMG_WIDTH / 4), 256], 2,
+                             "up3")
+    # decode 3
+    conv_decode3_3 = conv_layer_with_bn(upsample3, [3, 3, 256, 256], phase_train, False, name="conv_decode3_3")
+    conv_decode3_2 = conv_layer_with_bn(conv_decode3_3, [3, 3, 256, 256], phase_train, False, name="conv_decode3_2")
+    conv_decode3_1 = conv_layer_with_bn(conv_decode3_2, [3, 3, 256, 128], phase_train, False, name="conv_decode3_1")
+
+    # upsample2
+    # upsample2 = upsample_with_pool_indices(conv_decode3, pool2_indices, conv_decode3.get_shape(), scale=2, name='upsample2')
+    upsample2 = deconv_layer(conv_decode3_1, [2, 2, 128, 128], [batch_size, int(IMG_HEIGHT / 2), int(IMG_WIDTH / 2), 128], 2,
+                             "up2")
+    # decode 2
+    conv_decode2_2 = conv_layer_with_bn(upsample2, [3, 3, 128, 128], phase_train, False, name="conv_decode2_2")
+    conv_decode2_1 = conv_layer_with_bn(conv_decode2_2, [3, 3, 128, 64], phase_train, False, name="conv_decode2_1")
+
+    # upsample1
+    # upsample1 = upsample_with_pool_indices(conv_decode2, pool1_indices, conv_decode2.get_shape(), scale=2, name='upsample1')
+    upsample1 = deconv_layer(conv_decode2_1, [2, 2, 64, 64], [batch_size, IMG_HEIGHT, IMG_WIDTH, 64], 2, "up1")
+    # decode4
+    conv_decode1_2 = conv_layer_with_bn(upsample1, [3, 3, 64, 64], phase_train, False, name="conv_decode1_2")
+    conv_decode1_1 = conv_layer_with_bn(conv_decode1_2, [3, 3, 64, 64], phase_train, False, name="conv_decode1_1")
+
+    """ end of Decode """
+    """ Start Classify """
+    # output predicted class number (6)
+    with tf.variable_scope('conv_classifier') as scope:
+        kernel = _variable_with_weight_decay('weights',
+                                             shape=[1, 1, 64, NUM_CLASSES],
+                                             initializer=msra_initializer(1, 64),
+                                             wd=0.00001)
+        conv = tf.nn.conv2d(conv_decode1_1, kernel, [1, 1, 1, 1], padding='SAME')
+        biases = _variable_on_cpu('biases', [NUM_CLASSES], tf.constant_initializer(0.1))
+        conv_classifier = tf.nn.bias_add(conv, biases, name=scope.name)
+
+    logit = conv_classifier
+    if labels is None:
+        return logit
+    else:
+        loss = cal_loss(conv_classifier, labels, weights)
+        return loss, logit
+
+
+def prepare_encoder_parameters():
+    param_format = 'conv%d_%d'
+    conv_layers = [2, 2, 3, 3, 3]
+    params = []
+
+    for pool in range(1, 6):
+        for conv in range(1, conv_layers[pool - 1] + 1):
+
+            with tf.variable_scope(param_format % (pool,conv), reuse=True):
+                  weights = tf.get_variable('ort_weights')
+                  biases = tf.get_variable('biases')
+                  params += [weights, biases]
+
+    return params
+
+def get_init_prev_mask_filters(temp_val):
+
+        num_filters = temp_val.shape[-1]
+        kernal_size = temp_val.shape[0:2]
+        filt_list = []
+
+        for i in range(num_filters):
+            mean_filt = temp_val[:, :, :, i].mean()
+            std_filt = temp_val[:, :, :, i].std()
+
+            filt = np.random.normal(mean_filt, std_filt, kernal_size)
+            filt = filt[:, :, np.newaxis, np.newaxis]
+            filt_list.append(filt)
+
+        filt_array = np.concatenate(filt_list, axis=3)
+        return filt_array
+
+def get_init_prev_rgb_filters(temp_val):
+        is_same = True
+        if (is_same):
+            return temp_val
+
+        num_filters = temp_val.shape[-1]
+        kernal_size = temp_val.shape[0:2]
+        filt_list = []
+
+        for i in range(num_filters):
+            mean_rfilt = temp_val[:, :, 0, i].mean()
+            std_rfilt = temp_val[:, :, 0, i].std()
+
+            mean_gfilt = temp_val[:, :, 1, i].mean()
+            std_gfilt = temp_val[:, :, 1, i].std()
+
+            mean_bfilt = temp_val[:, :, 2, i].mean()
+            std_bfilt = temp_val[:, :, 2, i].std()
+
+            rfilt = np.random.normal(mean_rfilt, std_rfilt, kernal_size)
+            gfilt = np.random.normal(mean_gfilt, std_gfilt, kernal_size)
+            bfilt = np.random.normal(mean_bfilt, std_bfilt, kernal_size)
+            rgb_filt = np.dstack((rfilt, gfilt, bfilt))
+            rgb_filt = rgb_filt[:, :, :, np.newaxis]
+            filt_list.append(rgb_filt)
+
+        filt_array = np.concatenate(filt_list, axis=3)
+        return filt_array
+
+def initialize_vgg16(sess):
+    params = prepare_encoder_parameters()
+    WEIGHT_FILE = 'checkpoints/vgg16_weights.npz'
+    weights = np.load(WEIGHT_FILE)
+    keys = sorted(weights.keys())[:26]
+    for i, k in enumerate(keys):
+        val = weights[k]
+        if k=='conv1_1_W':
+            print('applying modified %s',k)
+            # Add extra channel for previous mask channel
+            prev_mask_filt_array = get_init_prev_mask_filters(val)
+            temp_mod_val = np.concatenate((val, prev_mask_filt_array), axis=2)
+            # Add extra channel for previous mask channel
+            prev_rgb_array = get_init_prev_rgb_filters(val)
+            temp_mod_val = np.concatenate((temp_mod_val, prev_rgb_array), axis=2)
+            sess.run(params[i].assign(temp_mod_val))
+
+        else:
+            print('applying  %s',k)
+            sess.run(params[i].assign(val))
+
 
 def train(total_loss, global_step):
     batch_size = BATCH_SIZE

@@ -22,6 +22,40 @@ def get_weights_classwise(label,resize=None,factor = None):
     weight_map[ones] = factor
     return weight_map
 
+
+
+def get_weights_classwise3(label,resize=None,factor = None):
+    
+    
+    dil_label = morphology.dilation(label,np.ones([5,5]))
+    weight_map = get_weights_classwise(dil_label, resize, factor)
+    return weight_map
+
+
+def get_weights_classwise_osvos(label, resize=None):
+    label_resized = np.float64(label)
+    # import matplotlib.pyplot as plt
+    # plt.figure()
+    # plt.imshow(label_resized)
+
+    if resize is not None:
+        label_resized = transform.resize(label_resized, resize, order=0)
+
+    label_resized = np.round(label_resized)
+
+    weight_map = np.zeros((label_resized.shape))
+    zeros = np.where(label_resized == 0)
+    ones = np.where(label_resized == 1)
+
+    beta = len(zeros[0]) / (len(ones[0]) +len(zeros[0]))
+
+    weight_map[zeros] = 1 - beta
+    weight_map[ones] = beta
+    # plt.figure()
+    # plt.imshow(weight_map)
+    # plt.colorbar()
+    return weight_map
+
 def get_weights_classwise2(label,resize=None,factor = None):
 
     label_resized = np.float64(label)
@@ -47,6 +81,11 @@ def get_weights_classwise2(label,resize=None,factor = None):
     #plt.imshow(weight_map)
     #plt.colorbar()
     return weight_map
+
+def get_label_changes(label,prev_mask):
+    changes = np.int8(label - prev_mask)
+    changes = np.abs(changes)
+    return np.uint8(changes)
 
     
 def prepare_input_ch7(img,prev_mask,prev_img):
