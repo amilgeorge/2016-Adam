@@ -36,6 +36,12 @@ def draw_masks(masks_dir,out_dir):
             
             
 if __name__ == '__main__':
-    masks_dir = '../Results/segnet-res2-ch7-aug-wl-P3N1-1-1/480p'
-    out_dir = masks_dir+'-vis'
-    draw_masks(masks_dir,out_dir)
+    #dirs = ['agg_half2-O1O5O10']
+
+    dirs = ['segnetvggwithskip-half2-wl-osvos-O1-1-1','segnetvggwithskip-half2-wl-osvos-O5-1-O5-1','segnetvggwithskip-half2-wl-osvos-O10-1-O10-1']
+
+    for d in dirs:
+        masks_dir = '../Results/{}/480p'.format(d)
+        print ('processing for {}'.format(masks_dir))
+        out_dir = masks_dir+'-vis'
+        draw_masks(masks_dir,out_dir)

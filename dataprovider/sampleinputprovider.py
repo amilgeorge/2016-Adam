@@ -16,9 +16,14 @@ from dataprovider.transformer import ImageRandomTransformer
 from numpy import dtype, size
 import random
 
+
 import matplotlib.pyplot as plt
 from binstar_client.utils.notebook.data_uri import Image
 from dataprovider import inputhelper
+from common import diskutils
+import glob
+
+
 IMAGE_HEIGHT = 360
 IMAGE_WIDTH = 480
 
@@ -93,12 +98,27 @@ class SampleInputProvider:
         self.val_set_info = np.loadtxt(os.path.join(self.BASE_DIR,\
                         self.IMAGESETS,'val.txt'), dtype=bytes,unpack=False).astype(str)
         #self.val_set_info = self.val_set_info[:419,:]
+        train_db_name = 'train'
+        val_db_name = 'val'
         if is_dummy:
-            self.train_set_info = self.train_set_info[247:250,:]
-            self.val_set_info = self.val_set_info[247:250,:]
-        
-        self.db = self.createDB(self.train_set_info)
-        self.validation_db = self.createDB(self.val_set_info)
+            train_db_name = 'dummy_train'
+            val_db_name = 'dummy_val'
+            self.train_set_info = self.train_set_info[247:255,:]
+            self.val_set_info = self.val_set_info[247:255,:]
+
+        offsets = [5]
+
+        #offsets = list(range(1,7))#[10]
+        self.db = self.createDB(self.train_set_info,name = train_db_name,offsets=offsets)
+        #self.db = self.create_train_DB2(train_db_name,offsets)
+
+        #half_db_name = "segnetvggwithskip-half-wl-osvos-O10-1-O10-1"
+        #prev_mask_dir = os.path.join("..","Results",half_db_name,"480p")
+        #self.db = self.create_train_DB3(name=half_db_name,
+        #            prev_mask_dir=prev_mask_dir,offsets=offsets)
+
+
+        self.validation_db = self.createDB(self.val_set_info,name = val_db_name,offsets=offsets)
     
     class DB: 
         def __init__(self,):
@@ -114,7 +134,7 @@ class SampleInputProvider:
             self.is_training = is_training
             numImages = self.db.images.shape[0]
             self.img_size = list(self.db.images.shape[1:3])
-            self.weights_size = list(self.db.weights.shape[1:3])
+            #self.weights_size = list(self.db.weights.shape[1:3])
             self.img_channels = self.db.images.shape[3]
             self.sequence_info = np.random.permutation(list(range(numImages)))
             self.index = 0
@@ -128,7 +148,7 @@ class SampleInputProvider:
             config[ImageRandomTransformer.CONFIG_ROTATION_ANGLE_STEP] = 5
             config[ImageRandomTransformer.CONFIG_SHEAR_RANGE] = [-5,5]
             config[ImageRandomTransformer.CONFIG_SHEAR_ANGLE_STEP] = None
-            config[ImageRandomTransformer.CONFIG_SCALE_FACTOR_RANGE] = [0.7,1.3]
+            config[ImageRandomTransformer.CONFIG_SCALE_FACTOR_RANGE] = [0.5,1.0]
             config[ImageRandomTransformer.CONFIG_TRANSLATION_FACTOR_STEP] = 0.1
             config[ImageRandomTransformer.CONFIG_TRANSLATION_FACTOR_RANGE] = [-0.2,0.2]
 
@@ -148,11 +168,12 @@ class SampleInputProvider:
                 # Read images and labels 
                 images = np.zeros([self.batch_size]+self.img_size+[self.img_channels],dtype = np.float32)
                 labels = np.zeros([self.batch_size]+self.img_size)
-                weights = np.empty([self.batch_size]+self.weights_size,dtype=np.float32)
+                weights = np.empty([self.batch_size]+self.img_size,dtype=np.float32)
                 for i,idx in enumerate(selected_indexes):
                     label_dim = np.expand_dims(self.db.labels[idx,:,:], axis=2)
                     stked = np.concatenate((self.db.images[idx,:,:,:],label_dim),axis = 2)
-                    
+                    #import pdb
+                    #pdb.set_trace()
                     stked,_ = self.transformer.get_random_transformed(stked)
                     image = stked[:,:,0:7]
                     if self.is_training:
@@ -161,8 +182,8 @@ class SampleInputProvider:
                     label = np.uint8(stked[:,:,7]) 
                     ## Label as changes
                     prev_mask = np.uint8(stked[:,:,3])  
-#                    label_changes = inputhelper.get_label_changes(label, prev_mask)
-#                    label = label_changes
+                    #label_changes = inputhelper.get_dilated(label)
+                    #label = label_changes
 #                     plt.figure()
 #                     plt.subplot(3,1,1)
 #                     plt.imshow(label)
@@ -174,7 +195,13 @@ class SampleInputProvider:
                     #self._debug(image,label)
                     images[i,:,:,:]=image
                     labels[i,:,:]=label
-                    weights[i,:,:] = inputhelper.get_weights_classwise_osvos(label)
+                    #weights[i,:,:] = inputhelper.get_distance_transform(label)
+
+                    #weights[i,:,:] = inputhelper.get_weights_classwise_osvos(label)
+                    weights[i,:,:] = inputhelper.get_weights_osvos_distance(label)
+
+                    #weights[i,:,:] = inputhelper.get_weights_classwise2(label,factor=3)
+
                     #plt.figure()
                     #plt.subplot(2,1,1)
                     #plt.imshow(weights[i,:,:])
@@ -299,51 +326,255 @@ class SampleInputProvider:
         
         prevMaskFile='{0}{1:05}.png'.format(prefix,maskFrameNo)
         return prevMaskFile
-    
-        
-    def createDB(self,data_set_info):
-        #import cPickle as pickle
-        cached_db = '/work/george/cache/davisdb.pickle'
-        if os.path.isfile(cached_db):
-        #    with open(cached_db,'rb') as f:  
-        #        db = 
-        #    return db
-            pass
-        else:
-            numImages = data_set_info.shape[0]
-            db = SampleInputProvider.DB()
-            db.images = np.zeros([numImages]+self.resize+[SampleInputProvider.NUM_CHANNELS])
-            db.labels = np.zeros([numImages]+self.resize)
-            db.weights = np.zeros([numImages]+self.weights_resize,dtype=np.float32)
-            db.filenames = []
-            
-            for i in range(numImages):
-                imageFile = data_set_info[i,0]
+
+    def create_train_DB2(self, name='',offsets=[]):
+
+        print("Creating DB2 with offsets:{} ".format(offsets))
+        #offsets = [1] # list(range(1,7))
+        # import cPickle as pickle
+        # cached_db = '/work/george/cache/davisdb.pickle'
+        offset_string = "-".join(str(x) for x in offsets)
+        base_dir = os.path.join('/work/george/cache/db-half/offset-{}/'.format(offset_string), name)
+        images_cached_file = os.path.join(base_dir, 'images_db.npy')
+        labels_cached_file = os.path.join(base_dir, 'labels_db.npy')
+
+        if not (os.path.isfile(images_cached_file) and os.path.isfile(labels_cached_file)):
+
+            print("cached db not found. preparing memmap ...")
+
+            diskutils.ensure_dir(base_dir)
+
+            if (os.path.isfile(images_cached_file)):
+                print("please clean cache file : ", images_cached_file)
+                return
+            if (os.path.isfile(labels_cached_file)):
+                print("please clean cache file : ", labels_cached_file)
+                return
+
+
+            seqs = davis.train_sequence_list()
+            tmp_files_dir = os.path.join(base_dir, 'temp')
+            diskutils.ensure_dir(tmp_files_dir)
+
+            for seq in seqs:
+                frames = davis.all_frames_nums(seq)
+                mid = int(max(frames)/2)
+                print("train: for seq:{} using frames {} to {}".format(seq,min(frames)+1,mid))
+                for frame_no in range(min(frames)+1,mid+1):
+                    for offset in offsets:
+                        imageFile = davis.image_path(seq, frame_no)
+                        labelFile = davis.label_path(seq, frame_no)
+                        # prevMaskFile = self.getPrevMaskFile(labelFile)
+                        image = self.read_image2(imageFile, offset=offset)
+                        if (np.count_nonzero(image[:, :, 3]) == 0):
+                            print("skipping image all zeros: {}".format(imageFile))
+                            continue
+                        label = self.davis.read_label(labelFile, self.resize)
+                        outfile = os.path.join(tmp_files_dir, 'file-{}-{}-o{}.npz'.format(seq, frame_no, offset))
+                        np.savez(outfile, image=image, label=label)
+
+
+            self.create_memmap_db(tmp_files_dir,images_cached_file,labels_cached_file)
+
+
+        print("loading readonly memmap...")
+
+        db = SampleInputProvider.DB()
+
+        # db.images = np.memmap(images_cached_file, dtype='float32', mode='r', shape=tuple([num_db_images]+self.resize+[SampleInputProvider.NUM_CHANNELS]))
+        # db.labels = np.memmap(labels_cached_file, dtype='float32', mode='r', shape=tuple([num_db_images] + self.resize))
+
+        db.images = np.load(images_cached_file, mmap_mode='r')
+        db.labels = np.load(labels_cached_file, mmap_mode='r')
+
+        print("db memmap loaded...")
+
+        return db
+
+    def create_train_DB3(self, name='',prev_mask_dir = None, offsets = []):
+
+        print("Creating DB3 with offsets {} prev_mask_folder:{}".format(offsets,prev_mask_dir))
+
+        #offsets = [1] # list(range(1,7))
+        offset_string = "-".join(str(x) for x in offsets)
+        base_dir = os.path.join('/work/george/cache/db3/offset-{}/'.format(offset_string), name)
+        images_cached_file = os.path.join(base_dir, 'images_db.npy')
+        labels_cached_file = os.path.join(base_dir, 'labels_db.npy')
+
+        if not (os.path.isfile(images_cached_file) and os.path.isfile(labels_cached_file)):
+
+            print("cached db not found. preparing memmap ...")
+
+            diskutils.ensure_dir(base_dir)
+
+            if (os.path.isfile(images_cached_file)):
+                print("please clean cache file : ", images_cached_file)
+                return
+            if (os.path.isfile(labels_cached_file)):
+                print("please clean cache file : ", labels_cached_file)
+                return
+
+
+            seqs = davis.train_sequence_list()
+            tmp_files_dir = os.path.join(base_dir,'temp')
+            diskutils.ensure_dir(tmp_files_dir)
+
+            for offset in offsets:
+                for seq in seqs:
+                    frames = davis.all_frames_nums(seq)
+                    mid = int(max(frames)/2)
+                    print("train: for seq:{} using frames {} to {}".format(seq,min(frames)+1,mid))
+                    for frame_no in range(mid+1,max(frames)+1):
+
+                            imageFile = davis.image_path(seq, frame_no)
+                            labelFile = davis.label_path(seq, frame_no)
+                            prev_mask_file = inputhelper.prev_mask_path(prev_mask_dir,seq,frame_no,offset)
+                            prev_mask = inputhelper.read_label(prev_mask_file,self.resize)
+                            image = self.read_image2(imageFile, offset=offset,prev_mask=prev_mask)
+                            if (np.count_nonzero(image[:, :, 3]) == 0):
+                                print("skipping image all zeros: {}".format(imageFile))
+                                continue
+                            label = self.davis.read_label(labelFile, self.resize)
+                            outfile = os.path.join(tmp_files_dir, 'file-{}-{}-o{}.npz'.format(seq,frame_no, offset))
+                            np.savez(outfile, image=image, label=label)
+
+            self.create_memmap_db(tmp_files_dir,images_cached_file,labels_cached_file)
+
+        print("loading readonly memmap...")
+
+        db = SampleInputProvider.DB()
+
+        # db.images = np.memmap(images_cached_file, dtype='float32', mode='r', shape=tuple([num_db_images]+self.resize+[SampleInputProvider.NUM_CHANNELS]))
+        # db.labels = np.memmap(labels_cached_file, dtype='float32', mode='r', shape=tuple([num_db_images] + self.resize))
+
+        db.images = np.load(images_cached_file, mmap_mode='r')
+        db.labels = np.load(labels_cached_file, mmap_mode='r')
+
+        print("db memmap loaded...")
+
+        return db
+
+    def prepare_temp_files(self,data_set_info,offsets,out_dir):
+        num_images = data_set_info.shape[0]
+        for i in range(num_images):
+            for offset in offsets:
+                imageFile = data_set_info[i, 0]
                 imageFile = imageFile[1:]
-                labelFile = data_set_info[i,1]
+                labelFile = data_set_info[i, 1]
                 labelFile = labelFile[1:]
-                #prevMaskFile = self.getPrevMaskFile(labelFile)
-                image = self.read_image2(imageFile)
+                # prevMaskFile = self.getPrevMaskFile(labelFile)
+                image = self.read_image2(imageFile, offset=offset)
+                if (np.count_nonzero(image[:, :, 3]) == 0):
+                    print("skipping image all zeros: {}".format(imageFile))
+                    continue
                 label = self.davis.read_label(labelFile, self.resize)
-                db.images[i,:,:,:] = image
-                db.labels[i,:,:] = label
-                db.weights[i,:,:] = self.davis.get_weight_map(imageFile, resize = self.weights_resize)
-                db.filenames.append(imageFile)
+                outfile = os.path.join(out_dir,'file-{}-o{}.npz'.format(i,offset))
+                np.savez(outfile,image=image,label=label)
+
+
+    def createDB(self,data_set_info,name='',offsets=[]):
+        print("Creating DB with offsets: {}".format(offsets))
+        #offsets = list(range(1,7))
+        #import cPickle as pickle
+        #cached_db = '/work/george/cache/davisdb.pickle'
+        offset_string = "-".join(str(x) for x in offsets)
+        base_dir = os.path.join('/work/george/cache/db/offset-{}/'.format(offset_string),name)
+        images_cached_file = os.path.join(base_dir,'images_db.npy')
+        labels_cached_file = os.path.join(base_dir,'labels_db.npy')
+        num_images = data_set_info.shape[0]
+
+        if not (os.path.isfile(images_cached_file) and os.path.isfile(labels_cached_file)):
+
+            print("cached db not found. preparing memmap ...")
+
+            diskutils.ensure_dir(base_dir)
+
+            if(os.path.isfile(images_cached_file)):
+                print("please clean cache file : ",images_cached_file)
+                return
+            if (os.path.isfile(labels_cached_file)):
+                print("please clean cache file : ", labels_cached_file)
+                return
+
+            #Prepare temporary files for reading
+            tmp_files_dir = os.path.join(base_dir,"temp")
+            diskutils.ensure_dir(tmp_files_dir)
+
+            self.prepare_temp_files(data_set_info,offsets,tmp_files_dir)
+
+            # Create the database
+            all_files = glob.glob(os.path.join(tmp_files_dir,"*.npz"))
+            num_db_images = len(all_files)
+            #images_mmap = np.memmap(images_cached_file, dtype='float32', mode='w+',
+            #                        shape=tuple([num_db_images] + self.resize + [SampleInputProvider.NUM_CHANNELS]))
+            #labels_mmap = np.memmap(labels_cached_file, dtype='float32', mode='w+',
+            #                        shape=tuple([num_db_images] + self.resize))
+            images_mmap = np.lib.format.open_memmap(images_cached_file, dtype='float32', mode='w+',
+                                    shape=tuple([num_db_images] + self.resize + [SampleInputProvider.NUM_CHANNELS]))
+            labels_mmap = np.lib.format.open_memmap(labels_cached_file, dtype='float32', mode='w+',
+                                    shape=tuple([num_db_images] + self.resize))
+
+            self.create_memmap_db(tmp_files_dir,images_cached_file,labels_cached_file)
+
+
+
+
+
+        print("loading readonly memmap...")
+
+        db = SampleInputProvider.DB()
+
+        #db.images = np.memmap(images_cached_file, dtype='float32', mode='r', shape=tuple([num_db_images]+self.resize+[SampleInputProvider.NUM_CHANNELS]))
+        #db.labels = np.memmap(labels_cached_file, dtype='float32', mode='r', shape=tuple([num_db_images] + self.resize))
+
+        db.images = np.load(images_cached_file,mmap_mode='r')
+        db.labels = np.load(labels_cached_file, mmap_mode='r')
+
+        print("db memmap loaded...")
+
             
-            #with open(cached_db,'wb') as f:  
-            #    pickle.dump(db,f)
-            
-            return db
+        return db
+
+    def create_memmap_db(self,tmp_files_dir,images_cached_file,labels_cached_file):
+        # Create the database
+        print("creating memmap db...")
+
+        all_files = glob.glob(os.path.join(tmp_files_dir, "*.npz"))
+        num_db_images = len(all_files)
+        # images_mmap = np.memmap(images_cached_file, dtype='float32', mode='w+',
+        #                        shape=tuple([num_db_images] + self.resize + [SampleInputProvider.NUM_CHANNELS]))
+        # labels_mmap = np.memmap(labels_cached_file, dtype='float32', mode='w+',
+        #                        shape=tuple([num_db_images] + self.resize))
+        images_mmap = np.lib.format.open_memmap(images_cached_file, dtype='float32', mode='w+',
+                                                shape=tuple(
+                                                    [num_db_images] + self.resize + [SampleInputProvider.NUM_CHANNELS]))
+        labels_mmap = np.lib.format.open_memmap(labels_cached_file, dtype='float32', mode='w+',
+                                                shape=tuple([num_db_images] + self.resize))
+
+        for i,f in enumerate(all_files):
+            npzfile = np.load(f)
+            image = npzfile['image']
+            label = npzfile['label']
+
+            images_mmap[i, :, :, :] = image
+            labels_mmap[i, :, :] = label
+
+        print("db:{} , num db images {}: ".format(tmp_files_dir, num_db_images))
+        del images_mmap
+        del labels_mmap
+        print("saved db to disk...")
+
+
+    def read_image2(self,image_path, offset = 1,prev_mask = None):
     
-    def read_image2(self,image_path,prev_mask = None):  
-    
-        
-        prev_rgb_path = self.davis.construct_image_path(image_path, offset= -1)
+        prev_mask_offset = -offset
+
+        prev_rgb_path = self.davis.construct_image_path(image_path, offset= prev_mask_offset)
         
         rgb = self.davis.read_image(image_path, self.resize)
         
-        if prev_mask ==None:
-            prev_mask_path = self.davis.construct_label_path(image_path, offset = -1)
+        if prev_mask is None:
+            prev_mask_path = self.davis.construct_label_path(image_path, offset = prev_mask_offset)
             prev_mask = self.davis.read_label(prev_mask_path, self.resize)
             
         prev_mask = np.expand_dims(prev_mask, axis=2)
@@ -390,7 +621,7 @@ class SampleInputProvider:
    
     
 if __name__ == '__main__':
-    provider = SampleInputProvider(is_coarse=False,is_dummy=True)
+    provider = SampleInputProvider(resize=[IMAGE_HEIGHT,IMAGE_WIDTH],is_coarse=False,is_dummy=True)
     for j in range(1,1000):
         input_batch = provider.sequence_batch_itr(16)
 

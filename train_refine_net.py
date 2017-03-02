@@ -130,7 +130,7 @@ if __name__ == '__main__':
                     loss_unweighted_value = result[3]
                     logger.info('iters:{}, seq_no:{} loss :{} loss_unweighted:{} '.format(step, i, loss_value,loss_unweighted_value))
                     
-                    if step%100 ==0:
+                    if step%1000 ==0:
                         summary_writer.add_summary(result[2], step )
     
                     
