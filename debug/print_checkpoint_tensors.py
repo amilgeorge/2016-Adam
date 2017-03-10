@@ -36,7 +36,7 @@ def print_tensors_in_checkpoint_file(file_name, tensor_name):
             "with SNAPPY.")
 
 
-print_tensors_in_checkpoint_file('exp/coarse-weighted-f5-5/iters-11000',None)
+print_tensors_in_checkpoint_file('checkpoints/resnet_v1_50.ckpt',None)
 # inp = tf.placeholder(tf.float32,shape=[None,224,224,4],name='input')
 # coarse_net = CoarseNet(inp,'resnet_v1_50',False)
 # net,end_points = coarse_net.net,coarse_net.end_points

@@ -10,7 +10,7 @@ import os
 import numpy as np
 from skimage import io,transform,morphology
 import re
-from dataprovider.preprocess import vgg_preprocess
+from dataprovider.preprocess import vgg_preprocess, reverse_vgg_preprocess
 from dataprovider.davis import DataAccessHelper
 from dataprovider.transformer import ImageRandomTransformer
 from numpy import dtype, size
@@ -28,7 +28,7 @@ IMAGE_HEIGHT = 360
 IMAGE_WIDTH = 480
 
 davis = DataAccessHelper()
-def prepare_input_ch7(image_path,prev_mask):
+def prepare_input_ch7(image_path, prev_mask, offset):
     
     # Read image
     img = davis.read_image(image_path, [IMAGE_HEIGHT,IMAGE_WIDTH])
@@ -37,7 +37,7 @@ def prepare_input_ch7(image_path,prev_mask):
     mask = np.expand_dims(prev_mask,axis=2)    
     
     # Read previous image
-    prev_img_path = davis.construct_image_path(image_path, offset= -1)
+    prev_img_path = davis.construct_image_path(image_path, offset= offset)
     prev_img = davis.read_image(prev_img_path, [IMAGE_HEIGHT,IMAGE_WIDTH])
     prev_img = prev_img*255
     
@@ -106,9 +106,9 @@ class SampleInputProvider:
             self.train_set_info = self.train_set_info[247:255,:]
             self.val_set_info = self.val_set_info[247:255,:]
 
-        offsets = [5]
+        #offsets = [1]
 
-        #offsets = list(range(1,7))#[10]
+        offsets = [1]#list(range(1,7))#[10]
         self.db = self.createDB(self.train_set_info,name = train_db_name,offsets=offsets)
         #self.db = self.create_train_DB2(train_db_name,offsets)
 
@@ -197,8 +197,8 @@ class SampleInputProvider:
                     labels[i,:,:]=label
                     #weights[i,:,:] = inputhelper.get_distance_transform(label)
 
-                    #weights[i,:,:] = inputhelper.get_weights_classwise_osvos(label)
-                    weights[i,:,:] = inputhelper.get_weights_osvos_distance(label)
+                    weights[i,:,:] = inputhelper.get_weights_classwise_osvos(label)
+                    #weights[i,:,:] = inputhelper.get_weights_osvos_distance(label)
 
                     #weights[i,:,:] = inputhelper.get_weights_classwise2(label,factor=3)
 
@@ -255,6 +255,7 @@ class SampleInputProvider:
             frame.axes.get_xaxis().set_visible(False)
             frame.axes.get_yaxis().set_visible(False)
             plt.imshow(img[:,:,3])
+
         def get_data(self,selected_indexes):  
             if self.is_training:
                 pass
@@ -617,15 +618,85 @@ class SampleInputProvider:
         #io.imshow(mask)
         
         return mask
-    
+
+def _debug(img,label,save_loc = None):
+    plt.subplot(2,2,1)
+    frame = plt.gca()
+    frame.axes.set_title('Img')
+    frame.axes.get_xaxis().set_visible(False)
+    frame.axes.get_yaxis().set_visible(False)
+    plt.imshow(np.uint8(img[:,:,0:3]))
+    plt.subplot(2,2,2)
+    frame = plt.gca()
+    frame.axes.set_title('Prev Img')
+    frame.axes.get_xaxis().set_visible(False)
+    frame.axes.get_yaxis().set_visible(False)
+    plt.imshow(np.uint8(img[:,:,4:7]))
+    plt.subplot(2,2,3)
+    frame = plt.gca()
+    frame.axes.get_xaxis().set_visible(False)
+    frame.axes.get_yaxis().set_visible(False)
+    plt.imshow(np.uint8(label))
+    plt.subplot(2,2,4)
+    frame = plt.gca()
+    frame.axes.get_xaxis().set_visible(False)
+    frame.axes.get_yaxis().set_visible(False)
+    plt.imshow(img[:,:,3])
+    if save_loc:
+        plt.savefig(save_loc)
+
+    plt.close()
    
-    
-if __name__ == '__main__':
-    provider = SampleInputProvider(resize=[IMAGE_HEIGHT,IMAGE_WIDTH],is_coarse=False,is_dummy=True)
-    for j in range(1,1000):
-        input_batch = provider.sequence_batch_itr(16)
+def test_gen_samples():
+
+    provider = SampleInputProvider(resize=[IMAGE_HEIGHT,IMAGE_WIDTH],is_coarse=False,is_dummy=False)
+    batch_size = 4
+    num=0
+    dir = 'davis_samp/'
+    diskutils.ensure_dir(dir)
+    max_num = 1000
+    while num < max_num:
+        input_batch = provider.sequence_batch_itr(batch_size)
 
         for i, batch in enumerate(input_batch):
-            print (i, 'rgb files: ')
+
+            if num > max_num:
+                break
+
+            for j in range(batch_size):
+                if num > max_num:
+                    break
+                save_loc = os.path.join(dir, '{}.png'.format(num))
+
+                imgs= reverse_vgg_preprocess(batch.images)
+                _debug(imgs[j,:,:,:],batch.labels[j,:,:],save_loc)
+                print (i, 'rgb files: ')
+                num+=1
+
+if __name__ == '__main__':
+    provider = SampleInputProvider(resize=[IMAGE_HEIGHT,IMAGE_WIDTH],is_coarse=False,is_dummy=True)
+    batch_size = 4
+    num=0
+    dir = '/tmp/davis_samp/'
+    diskutils.ensure_dir(dir)
+    max_num = 1000
+    while num < max_num:
+        input_batch = provider.sequence_batch_itr(batch_size)
+
+        for i, batch in enumerate(input_batch):
+
+            if num > max_num:
+                break
+
+            for j in range(batch_size):
+                if num > max_num:
+                    break
+                save_loc = os.path.join(dir, '{}.png'.format(num))
+
+                imgs= reverse_vgg_preprocess(batch.images)
+                _debug(imgs[j,:,:,:],batch.labels[j,:,:],save_loc)
+                print (i, 'rgb files: ')
+                num+=1
+
     
     print("Done")

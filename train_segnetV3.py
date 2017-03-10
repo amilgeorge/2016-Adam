@@ -10,9 +10,13 @@ import numpy as np
 from dataprovider.sampleinputprovider import SampleInputProvider
 from common.logger import getLogger
 from common.diskutils import ensure_dir
-from net import segnet2 as segnet
+from net import segnet3 as segnet
+from net import segnet3_1 as segnet_1
+
 import time
 import os
+from ops.segnet_loss import weighted_per_image_loss2
+
 #import tracemalloc
 #import gc
 
@@ -23,7 +27,8 @@ RESNET_50 = 'resnet_v1_50'
 HEAD = RESNET_50
 TAIL = 'tail'
 
-RUN_ID = "segnetvggwithskip-wl-osvos-O106-2"
+networkarch = "V3"
+RUN_ID = "segnet{}-wl-osvos-O1-batchnorm3".format(networkarch)
 CHECKPOINT = None#'exp/segnetvggwithskip-half-wl-osvos-O10-1/iters-45000'
 
 EVENTS_DIR = os.path.join('events',RUN_ID)#time.strftime("%Y%m%d-%H%M%S")
@@ -79,12 +84,20 @@ if __name__ == '__main__':
                     
         #loss,logit = segnet.inference(inp, label, is_training_pl,weights)
         #loss,logit = segnet.inference_vgg16(inp, label, is_training_pl,weights)
-        loss,logit = segnet.inference_vgg16_withskip(inp, label, is_training_pl,weights)
-        #loss,logit = segnet.inference_vgg16_withdrop(inp, label, is_training_pl,weights,keep_prob)
 
+        if networkarch == "V3_1":
+            logger.info('using arch :{}'.format(networkarch))
+            logit = segnet_1.inference(inp, is_training_pl)
+        elif networkarch == "V3_2":
+            logger.info('using arch :{}'.format(networkarch))
+            logit = segnet.inference2(inp, is_training_pl)
+        else:
+            logger.info('using arch :{}'.format(networkarch))
+            logit = segnet.inference(inp, is_training_pl)
 
-        loss_averages_op = segnet._add_loss_summaries(loss)
-        #segnet.prepare_encoder_parameters()
+        label_int = tf.cast(label, tf.int32)
+        loss = weighted_per_image_loss2(logit, label_int, num_classes=2, weight_map=weights)
+
 
 
         logit = tf.reshape(logit, (-1, NUM_CLASSES))
@@ -100,11 +113,10 @@ if __name__ == '__main__':
         learning_rate = tf.train.exponential_decay(0.01, global_step_var, 10,
                                        0.1, staircase=True)
 
-        with tf.control_dependencies([loss_averages_op]):
         #optimizer = tf.train.GradientDescentOptimizer(0.01)
-            optimizer = tf.train.MomentumOptimizer(0.01,0.9)
+        optimizer = tf.train.MomentumOptimizer(0.01,0.9)
 
-            gradients = optimizer.compute_gradients(loss)
+        gradients = optimizer.compute_gradients(loss)
             
         
                     
@@ -257,7 +269,7 @@ if __name__ == '__main__':
                 # Start running operations on the Graph.
                 sess.run(init)
 
-                segnet.initialize_vgg16(sess)
+                segnet.initialize_resnet(sess)
 
             train_summary_writer = tf.train.SummaryWriter(EVENTS_DIR + '/train', sess.graph)
             test_summary_writer = tf.train.SummaryWriter(EVENTS_DIR + '/test')
@@ -296,7 +308,8 @@ if __name__ == '__main__':
                     #io.imshow(out.eval())
                     #pass
                     if step % 500 == 0:
-                        perform_validation(sess,step,test_summary_writer)
+                        pass
+                        #perform_validation(sess,step,test_summary_writer)
 
                     if step % 1000 == 0:
                         logger.info('Saving weights.')

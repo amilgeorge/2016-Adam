@@ -13,10 +13,12 @@ from dataprovider.davis import DataAccessHelper
 from common.logger import getLogger
 import skimage
 import re
-from net import segnet2 as segnet
+from net import segnet3 as segnet
 from dataprovider.finetuneinputprovider import FineTuneDataProvider
 from common.diskutils import ensure_dir
 import numpy as np
+from net import segnet3_1 as segnet_1
+
 
 NETWORK = 'coarse'
 CHECKPOINT_1 = 'exp/refine-test_1/iters-38609'
@@ -44,7 +46,7 @@ CHECKPOINT_22 = 'exp/segnetvgg-res2-ch7-aug-wl-osvos-7/iters-30000'
 CHECKPOINT_23 = 'exp/segnetvggwithskip-res2-ch7-aug-wl-osvos-1/iters-30000'
 CHECKPOINT_24 = 'exp/segnetvggwithskip-res2-ch7-aug-wl-P3N1-1/iters-30000'
 CHECKPOINT_25 = 'exp/segnetvggwithskip-res2-ch7-aug-wl-ldiffosvos-1/iters-30000'
-CHECKPOINT_26 = ('exp/segnetvggwithskip-res2-ch7-aug-wl-osvos-O5-1/iters-45000',5)
+CHECKPOINT_26 = 'exp/segnetvggwithskip-res2-ch7-aug-wl-osvos-O5-1/iters-45000'
 CHECKPOINT_27 = 'exp/segnetvggwithskip-res2-ch7-aug-wl-osvos-O1O6-1/iters-45000'
 CHECKPOINT_28 = 'exp/segnetvggwithskip-res2-ch7-aug-wl-osvos-O10-1/iters-45000'
 CHECKPOINT_29 = 'exp/segnetvggwithskip-res2-ch7-aug-wl-dist-O5-1/iters-36000'
@@ -60,6 +62,9 @@ CHECKPOINT_38 = 'exp/segnetvggwithskip-half2-wl-osvos-O5-1/iters-90000'
 CHECKPOINT_39 = 'exp/segnetvggwithskip-half2-wl-osvos-O1-1/iters-90000'
 TESTPARAMS40 = ('exp/segnetvggwithskip-wl-distosvos-O1-1/iters-45000',1)
 TESTPARAMS41 = ('exp/segnetvggwithskip-wl-distosvos-O5-1/iters-45000',5)
+TESTPARAMS42 = ('exp/segnetV3-wl-osvos-O1-2/iters-45000',1)
+TESTPARAMS43 = ('exp/segnetV3_2-wl-osvos-O1-1/iters-45000',1)
+TESTPARAMS44 = ('exp/segnetV3_1-wl-osvos-O1-1/iters-30000',1)
 
 
 
@@ -69,7 +74,7 @@ OFFSET  = None
 learn_changes_mode = False
 use_gt_prev_mask = True
 
-SAVE_PREDICTIONS = True
+SAVE_PREDICTIONS = False
 
 davis = DataAccessHelper()
 logger = getLogger() 
@@ -81,6 +86,11 @@ LOGS_DIR = os.path.join('logs',RUN_ID)
 
 IMAGE_HEIGHT = 360
 IMAGE_WIDTH = 480
+
+def get_run_id():
+    m = re.match(r"exp/(.*)/iter.*", CHECKPOINT)
+    res_dir = m.group(1)
+    return res_dir
 
 
 def prev_mask_path(out_dir,seq_name, frame_no, offset):
@@ -116,28 +126,23 @@ def save_prediction(out_dir,sequence_name,frame_no,prediction):
     out_path = os.path.join(out_seq_dir, '{0:05}.npy'.format(frame_no))
     np.save(out_path, prediction)
 
-def build_model_for_fine_tuning():
-    inp = tf.placeholder(tf.float32,shape=[None,IMAGE_HEIGHT,IMAGE_WIDTH,7],name='input')
-    label =  tf.placeholder(tf.float32,shape=[None,IMAGE_HEIGHT,IMAGE_WIDTH],name='label')
-    is_training_pl = tf.placeholder(tf.bool,name="segnet_is_training")
-    loss,logit = segnet.inference_vgg16_withskip(inp, label, is_training_pl)
 
-    logit = tf.reshape(logit, (-1, segnet.NUM_CLASSES))
-    out = tf.reshape(tf.nn.softmax(logit),[-1,IMAGE_HEIGHT,IMAGE_WIDTH,segnet.NUM_CLASSES])
-    
-    ret_val = {"inp_pl":inp,
-               "label_pl":label,
-               "out" : out,
-               "is_training_pl":is_training_pl,
-               "loss":loss }
-    return ret_val
     
 def build_test_model():
     inp = tf.placeholder(tf.float32,shape=[None,IMAGE_HEIGHT,IMAGE_WIDTH,7],name='input')
     is_training_pl = tf.placeholder(tf.bool,name="segnet_is_training")
     keep_prob = tf.placeholder(tf.float32)
 
-    logit = segnet.inference_vgg16_withskip(inp,labels=None, phase_train=is_training_pl)
+    run_id = get_run_id()
+
+    if run_id.startswith("segnetV3_2"):
+        print("using V3_2")
+        logit = segnet.inference2(inp, is_training_pl)
+    if run_id.startswith("segnetV3_1"):
+        print("using V3_1")
+        logit = segnet_1.inference(inp, is_training_pl, is_training = False)
+    else:
+        logit = segnet.inference(inp, phase_train=is_training_pl,is_training = False)
     #logit = segnet.inference_vgg16_withdrop(inp,labels=None, phase_train=is_training_pl,keep_prob = keep_prob)
     #out=tf.reshape(tf.nn.softmax(logit),[-1,224,224,2])
     logit = tf.reshape(logit, (-1, segnet.NUM_CLASSES))
@@ -163,7 +168,8 @@ def test_sequence(session,net,sequence_name,out_dir,keep_size = True):
         image_path = davis.image_path(sequence_name, frame_no)
 
         if use_gt_prev_mask:
-            prev_label_path = davis.construct_label_path(image_path, -1 * OFFSET)
+            prev_label_path = davis.construct_label_path(image_path ,-1*OFFSET)
+            print("using prev mask {} for frame {}".format(prev_label_path, frame_no))
             prev_mask = davis.read_label(prev_label_path, [IMAGE_HEIGHT, IMAGE_WIDTH]) * 255
         else:
             prev_label_path = prev_mask_path(mask_out_dir, sequence_name, frame_no , OFFSET)
@@ -337,7 +343,7 @@ if __name__ == '__main__':
     #global CHECKPOINT
     #global OFFSET
 
-    test_points = [TESTPARAMS40]
+    test_points = [TESTPARAMS44]
 
     for tp in test_points:
         CHECKPOINT = tp[0]

@@ -39,16 +39,15 @@ Typical use:
 ResNet-101 for image classification into 1000 classes:
 
    # inputs has shape [batch, 224, 224, 3]
-   with slim.arg_scope(resnet_v1.resnet_arg_scope()):
-      net, end_points = resnet_v1.resnet_v1_101(inputs, 1000, is_training=False)
+   with slim.arg_scope(resnet_v1.resnet_arg_scope(is_training)):
+      net, end_points = resnet_v1.resnet_v1_101(inputs, 1000)
 
 ResNet-101 for semantic segmentation into 21 classes:
 
    # inputs has shape [batch, 513, 513, 3]
-   with slim.arg_scope(resnet_v1.resnet_arg_scope()):
+   with slim.arg_scope(resnet_v1.resnet_arg_scope(is_training)):
       net, end_points = resnet_v1.resnet_v1_101(inputs,
                                                 21,
-                                                is_training=False,
                                                 global_pool=False,
                                                 output_stride=16)
 """
@@ -60,8 +59,9 @@ import tensorflow as tf
 
 from models import resnet_utils
 
-
 resnet_arg_scope = resnet_utils.resnet_arg_scope
+resnet_arg_scope2 = resnet_utils.resnet_arg_scope2
+
 slim = tf.contrib.slim
 
 
@@ -90,7 +90,7 @@ def bottleneck(inputs, depth, depth_bottleneck, stride, rate=1,
   Returns:
     The ResNet unit's output.
   """
-  with tf.variable_scope('bottleneck_v1') as sc:
+  with tf.variable_scope(scope, 'bottleneck_v1', [inputs]) as sc:
     depth_in = slim.utils.last_dimension(inputs.get_shape(), min_rank=4)
     if depth == depth_in:
       shortcut = resnet_utils.subsample(inputs, stride, 'shortcut')
@@ -108,14 +108,13 @@ def bottleneck(inputs, depth, depth_bottleneck, stride, rate=1,
     output = tf.nn.relu(shortcut + residual)
 
     return slim.utils.collect_named_outputs(outputs_collections,
-                                            sc.original_name_scope,
+                                            sc.name,
                                             output)
 
 
 def resnet_v1(inputs,
               blocks,
               num_classes=None,
-              is_training=True,
               global_pool=True,
               output_stride=None,
               include_root_block=True,
@@ -150,7 +149,6 @@ def resnet_v1(inputs,
       is a resnet_utils.Block object describing the units in the block.
     num_classes: Number of predicted classes for classification tasks. If None
       we return the features before the logit layer.
-    is_training: whether is training or not.
     global_pool: If True, we perform global average pooling before computing the
       logits. Set to True for image classification, False for dense prediction.
     output_stride: If None, then the output will be computed at the nominal
@@ -176,38 +174,36 @@ def resnet_v1(inputs,
   Raises:
     ValueError: If the target output_stride is not valid.
   """
-  with tf.variable_scope( scope, reuse=reuse) as sc:
-    end_points_collection = sc.name + '_end_points'
+  with tf.variable_scope(scope, 'resnet_v1', [inputs], reuse=reuse) as sc:
+    end_points_collection = sc.original_name_scope + '_end_points'
     with slim.arg_scope([slim.conv2d, bottleneck,
                          resnet_utils.stack_blocks_dense],
                         outputs_collections=end_points_collection):
-      with slim.arg_scope([slim.batch_norm], is_training=is_training):
-        net = inputs
-        if include_root_block:
-          if output_stride is not None:
-            if output_stride % 4 != 0:
-              raise ValueError('The output_stride needs to be a multiple of 4.')
-            output_stride /= 4
-          net = resnet_utils.conv2d_same(net, 64, 7, stride=2, scope='conv1')
-          net = slim.max_pool2d(net, [3, 3], stride=2, scope='pool1')
-        net = resnet_utils.stack_blocks_dense(net, blocks, output_stride)
-        if global_pool:
-          # Global average pooling.
-          net = tf.reduce_mean(net, [1, 2], name='pool5', keep_dims=True)
-        if num_classes is not None:
-          net = slim.conv2d(net, num_classes, [1, 1], activation_fn=None,
-                            normalizer_fn=None, scope='logits')
-        # Convert end_points_collection into a dictionary of end_points.
-        end_points = dict(tf.get_collection(end_points_collection))
-        if num_classes is not None:
-          end_points['predictions'] = slim.softmax(net, scope='predictions')
-        return net, end_points
+      net = inputs
+      if include_root_block:
+        if output_stride is not None:
+          if output_stride % 4 != 0:
+            raise ValueError('The output_stride needs to be a multiple of 4.')
+          output_stride /= 4
+        net = resnet_utils.conv2d_same(net, 64, 7, stride=2, scope='conv1')
+        net = slim.max_pool2d(net, [3, 3], stride=2, scope='pool1')
+      net = resnet_utils.stack_blocks_dense(net, blocks, output_stride)
+      if global_pool:
+        # Global average pooling.
+        net = tf.reduce_mean(net, [1, 2], name='pool5', keep_dims=True)
+      if num_classes is not None:
+        net = slim.conv2d(net, num_classes, [1, 1], activation_fn=None,
+                          normalizer_fn=None, scope='logits')
+      # Convert end_points_collection into a dictionary of end_points.
+      end_points = slim.utils.convert_collection_to_dict(end_points_collection)
+      if num_classes is not None:
+        end_points['predictions'] = slim.softmax(net, scope='predictions')
+      return net, end_points
 resnet_v1.default_image_size = 224
 
 
 def resnet_v1_50(inputs,
                  num_classes=None,
-                 is_training=True,
                  global_pool=True,
                  output_stride=None,
                  reuse=None,
@@ -223,14 +219,12 @@ def resnet_v1_50(inputs,
       resnet_utils.Block(
           'block4', bottleneck, [(2048, 512, 1)] * 3)
   ]
-  return resnet_v1(inputs, blocks, num_classes, is_training,
-                   global_pool=global_pool, output_stride=output_stride,
+  return resnet_v1(inputs, blocks, num_classes, global_pool, output_stride,
                    include_root_block=True, reuse=reuse, scope=scope)
 
 
 def resnet_v1_101(inputs,
                   num_classes=None,
-                  is_training=True,
                   global_pool=True,
                   output_stride=None,
                   reuse=None,
@@ -246,14 +240,12 @@ def resnet_v1_101(inputs,
       resnet_utils.Block(
           'block4', bottleneck, [(2048, 512, 1)] * 3)
   ]
-  return resnet_v1(inputs, blocks, num_classes, is_training,
-                   global_pool=global_pool, output_stride=output_stride,
+  return resnet_v1(inputs, blocks, num_classes, global_pool, output_stride,
                    include_root_block=True, reuse=reuse, scope=scope)
 
 
 def resnet_v1_152(inputs,
                   num_classes=None,
-                  is_training=True,
                   global_pool=True,
                   output_stride=None,
                   reuse=None,
@@ -268,14 +260,12 @@ def resnet_v1_152(inputs,
           'block3', bottleneck, [(1024, 256, 1)] * 35 + [(1024, 256, 2)]),
       resnet_utils.Block(
           'block4', bottleneck, [(2048, 512, 1)] * 3)]
-  return resnet_v1(inputs, blocks, num_classes, is_training,
-                   global_pool=global_pool, output_stride=output_stride,
+  return resnet_v1(inputs, blocks, num_classes, global_pool, output_stride,
                    include_root_block=True, reuse=reuse, scope=scope)
 
 
 def resnet_v1_200(inputs,
                   num_classes=None,
-                  is_training=True,
                   global_pool=True,
                   output_stride=None,
                   reuse=None,
@@ -290,6 +280,5 @@ def resnet_v1_200(inputs,
           'block3', bottleneck, [(1024, 256, 1)] * 35 + [(1024, 256, 2)]),
       resnet_utils.Block(
           'block4', bottleneck, [(2048, 512, 1)] * 3)]
-  return resnet_v1(inputs, blocks, num_classes, is_training,
-                   global_pool=global_pool, output_stride=output_stride,
+  return resnet_v1(inputs, blocks, num_classes, global_pool, output_stride,
                    include_root_block=True, reuse=reuse, scope=scope)

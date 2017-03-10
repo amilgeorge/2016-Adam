@@ -41,172 +41,7 @@ import collections
 import tensorflow as tf
 
 slim = tf.contrib.slim
-from tensorflow.contrib.framework.python.ops import add_arg_scope
-from tensorflow.contrib.framework.python.ops import variables
-from tensorflow.contrib.layers.python.layers import initializers
-from tensorflow.contrib.layers.python.layers import utils
 
-
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn
-from tensorflow.python.ops import standard_ops
-from tensorflow.python.ops import variable_scope
-from tensorflow.python.training import moving_averages
-  
-def batch_norm2(inputs,
-               decay=0.999,
-               center=True,
-               scale=False,
-               epsilon=0.001,
-               activation_fn=None,
-               updates_collections=ops.GraphKeys.UPDATE_OPS,
-               is_training=True,
-               reuse=None,
-               variables_collections=None,
-               outputs_collections=None,
-               trainable=True,
-               scope=None):
-  """Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
-    "Batch Normalization: Accelerating Deep Network Training by Reducing
-    Internal Covariate Shift"
-    Sergey Ioffe, Christian Szegedy
-  Can be used as a normalizer function for conv2d and fully_connected.
-  Args:
-    inputs: a tensor of size `[batch_size, height, width, channels]`
-            or `[batch_size, channels]`.
-    decay: decay for the moving average.
-    center: If True, subtract `beta`. If False, `beta` is ignored.
-    scale: If True, multiply by `gamma`. If False, `gamma` is
-      not used. When the next layer is linear (also e.g. `nn.relu`), this can be
-      disabled since the scaling can be done by the next layer.
-    epsilon: small float added to variance to avoid dividing by zero.
-    activation_fn: Optional activation function.
-    updates_collections: collections to collect the update ops for computation.
-      If None, a control dependency would be added to make sure the updates are
-      computed.
-    is_training: whether or not the layer is in training mode. In training mode
-      it would accumulate the statistics of the moments into `moving_mean` and
-      `moving_variance` using an exponential moving average with the given
-      `decay`. When it is not in training mode then it would use the values of
-      the `moving_mean` and the `moving_variance`.
-    reuse: whether or not the layer and its variables should be reused. To be
-      able to reuse the layer scope must be given.
-    variables_collections: optional collections for the variables.
-    outputs_collections: collections to add the outputs.
-    trainable: If `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-    scope: Optional scope for `variable_op_scope`.
-  Returns:
-    A `Tensor` representing the output of the operation.
-  Raises:
-    ValueError: if rank or last dimension of `inputs` is undefined.
-  """
-  with variable_scope.variable_op_scope([inputs],
-                                        scope, 'BatchNorm', reuse=reuse) as sc:
-    inputs = ops.convert_to_tensor(inputs)
-    inputs_shape = inputs.get_shape()
-    inputs_rank = inputs_shape.ndims
-    if inputs_rank is None:
-      raise ValueError('Inputs %s has undefined rank.' % inputs.name)
-    dtype = inputs.dtype.base_dtype
-    axis = list(range(inputs_rank - 1))
-    params_shape = inputs_shape[-1:]
-    if not params_shape.is_fully_defined():
-      raise ValueError('Inputs %s has undefined last dimension %s.' % (
-          inputs.name, params_shape))
-    # Allocate parameters for the beta and gamma of the normalization.
-    beta, gamma = None, None
-    if center:
-      beta_collections = utils.get_variable_collections(variables_collections,
-                                                      'beta')
-      beta = variables.model_variable('beta',
-                                      shape=params_shape,
-                                      dtype=dtype,
-                                      initializer=init_ops.zeros_initializer,
-                                      collections=beta_collections,
-                                      trainable=trainable)
-    if scale:
-      gamma_collections = utils.get_variable_collections(variables_collections,
-                                                         'gamma')
-      gamma = variables.model_variable('gamma',
-                                       shape=params_shape,
-                                       dtype=dtype,
-                                       initializer=init_ops.ones_initializer,
-                                       collections=gamma_collections,
-                                       trainable=trainable)
-    # Create moving_mean and moving_variance variables and add them to the
-    # appropiate collections.
-    moving_mean_collections = utils.get_variable_collections(
-        variables_collections, 'moving_mean')
-    moving_mean = variables.model_variable(
-        'moving_mean',
-        shape=params_shape,
-        dtype=dtype,
-        initializer=init_ops.zeros_initializer,
-        trainable=False,
-        collections=moving_mean_collections)
-    moving_variance_collections = utils.get_variable_collections(
-        variables_collections, 'moving_variance')
-    moving_variance = variables.model_variable(
-        'moving_variance',
-        shape=params_shape,
-        dtype=dtype,
-        initializer=init_ops.ones_initializer,
-        trainable=False,
-        collections=moving_variance_collections)
-
-    # If `is_training` doesn't have a constant value, because it is a `Tensor`,
-    # a `Variable` or `Placeholder` then is_training_value will be None and
-    # `needs_moments` will be true.
-    is_training_value = utils.constant_value(is_training)
-    need_moments = is_training_value is None or is_training_value
-    if need_moments:
-    # Calculate the moments based on the individual batch.
-      mean, variance = nn.moments(inputs, axis, shift=moving_mean)
-      moving_vars_fn = lambda: (moving_mean, moving_variance)
-      if updates_collections is None:
-        def _force_updates():
-          """Internal function forces updates moving_vars if is_training."""
-          update_moving_mean = moving_averages.assign_moving_average(
-              moving_mean, mean, decay)
-          update_moving_variance = moving_averages.assign_moving_average(
-              moving_variance, variance, decay)
-          with ops.control_dependencies([update_moving_mean,
-                                         update_moving_variance]):
-            return array_ops.identity(mean), array_ops.identity(variance)
-        mean, variance = utils.smart_cond(is_training,
-                                          _force_updates,
-                                          moving_vars_fn)
-      else:
-        def _delay_updates():
-          """Internal function that delay updates moving_vars if is_training."""
-          update_moving_mean = moving_averages.assign_moving_average(
-              moving_mean, mean, decay)
-          update_moving_variance = moving_averages.assign_moving_average(
-              moving_variance, variance, decay)
-          return update_moving_mean, update_moving_variance
-
-        update_mean, update_variance = utils.smart_cond(is_training,
-                                                        _delay_updates,
-                                                        moving_vars_fn)
-        ops.add_to_collections(updates_collections, update_mean)
-        ops.add_to_collections(updates_collections, update_variance)
-        # Use computed moments during training and moving_vars otherwise.
-        vars_fn = lambda: (mean, variance)
-        mean, variance = utils.smart_cond(is_training, vars_fn, moving_vars_fn)
-    else:
-      mean, variance = moving_mean, moving_variance
-    # Compute batch_normalization.
-    outputs = nn.batch_normalization(
-        inputs, mean, variance, beta, gamma, epsilon)
-    outputs.set_shape(inputs_shape)
-    if activation_fn:
-      outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 class Block(collections.namedtuple('Block', ['scope', 'unit_fn', 'args'])):
   """A named tuple describing a ResNet block.
@@ -337,12 +172,12 @@ def stack_blocks_dense(net, blocks, output_stride=None,
   rate = 1
 
   for block in blocks:
-    with tf.variable_scope(block.scope) as sc:
+    with tf.variable_scope(block.scope, 'block', [net]) as sc:
       for i, unit in enumerate(block.args):
         if output_stride is not None and current_stride > output_stride:
           raise ValueError('The target output_stride cannot be reached.')
 
-        with tf.variable_scope('unit_%d' % (i + 1)):
+        with tf.variable_scope('unit_%d' % (i + 1), values=[net]):
           unit_depth, unit_depth_bottleneck, unit_stride = unit
 
           # If we have reached the target output_stride, then we need to employ
@@ -370,11 +205,15 @@ def stack_blocks_dense(net, blocks, output_stride=None,
 
   return net
 
+def batch_norm_layer(inputT, is_training):
+  return tf.cond(is_training,
+          lambda: tf.contrib.layers.batch_norm(inputT, is_training=True,
+                           center=False, updates_collections=None,scope="bn"),
+          lambda: tf.contrib.layers.batch_norm(inputT, is_training=False,
+                           updates_collections=None, center=False, reuse = True,scope="bn"))
 
-def resnet_arg_scope(weight_decay=0.0001,
-                     batch_norm_decay=0.997,
-                     batch_norm_epsilon=1e-5,
-                     batch_norm_scale=True):
+
+def resnet_arg_scope2(is_training,weight_decay=0.0001):
   """Defines the default ResNet arg scope.
 
   TODO(gpapan): The batch-normalization related default values above are
@@ -383,6 +222,8 @@ def resnet_arg_scope(weight_decay=0.0001,
     training ResNets from scratch, they might need to be tuned.
 
   Args:
+    is_training: Whether or not we are training the parameters in the batch
+      normalization layers of the model.
     weight_decay: The weight decay to use for regularizing the model.
     batch_norm_decay: The moving average decay when estimating layer activation
       statistics in batch normalization.
@@ -394,22 +235,85 @@ def resnet_arg_scope(weight_decay=0.0001,
   Returns:
     An `arg_scope` to use for the resnet models.
   """
+
+
   batch_norm_params = {
-      'decay': batch_norm_decay,
-      'epsilon': batch_norm_epsilon,
-      'scale': batch_norm_scale,
-      'updates_collections':  None#tf.GraphKeys.UPDATE_OPS,
-  }
-      
-      
+          'is_training': is_training
+      }
+
+
+
   with slim.arg_scope(
       [slim.conv2d],
       weights_regularizer=slim.l2_regularizer(weight_decay),
       weights_initializer=slim.variance_scaling_initializer(),
       activation_fn=tf.nn.relu,
-      normalizer_fn=batch_norm2,
+      normalizer_fn=batch_norm_layer,
       normalizer_params=batch_norm_params):
-    with slim.arg_scope([slim.batch_norm], **batch_norm_params):
+    #with slim.arg_scope([tf.contrib.layers.batch_norm], **batch_norm_params):
+      # The following implies padding='SAME' for pool1, which makes feature
+      # alignment easier for dense prediction tasks. This is also used in
+      # https://github.com/facebook/fb.resnet.torch. However the accompanying
+      # code of 'Deep Residual Learning for Image Recognition' uses
+      # padding='VALID' for pool1. You can switch to that choice by setting
+      # slim.arg_scope([slim.max_pool2d], padding='VALID').
+      with slim.arg_scope([slim.max_pool2d], padding='SAME') as arg_sc:
+        return arg_sc
+
+def resnet_arg_scope(is_training=True,
+                     weight_decay=0.0001,
+                     batch_norm_decay=0.997,
+                     batch_norm_epsilon=1e-5,
+                     batch_norm_scale=True):
+  """Defines the default ResNet arg scope.
+
+  TODO(gpapan): The batch-normalization related default values above are
+    appropriate for use in conjunction with the reference ResNet models
+    released at https://github.com/KaimingHe/deep-residual-networks. When
+    training ResNets from scratch, they might need to be tuned.
+
+  Args:
+    is_training: Whether or not we are training the parameters in the batch
+      normalization layers of the model.
+    weight_decay: The weight decay to use for regularizing the model.
+    batch_norm_decay: The moving average decay when estimating layer activation
+      statistics in batch normalization.
+    batch_norm_epsilon: Small constant to prevent division by zero when
+      normalizing activations by their variance in batch normalization.
+    batch_norm_scale: If True, uses an explicit `gamma` multiplier to scale the
+      activations in the batch normalization layer.
+
+  Returns:
+    An `arg_scope` to use for the resnet models.
+  """
+
+
+  if is_training:
+      batch_norm_params = {
+          'is_training': is_training,
+          'decay': batch_norm_decay,
+          'epsilon': batch_norm_epsilon,
+          'scale': batch_norm_scale,
+          'updates_collections': None#tf.GraphKeys.UPDATE_OPS,
+      }
+  else:
+      batch_norm_params = {
+          'is_training': is_training,
+          'decay': batch_norm_decay,
+          'epsilon': batch_norm_epsilon,
+          'scale': batch_norm_scale,
+          #'reuse': True,
+          'updates_collections': None  # tf.GraphKeys.UPDATE_OPS,
+      }
+
+  with slim.arg_scope(
+      [slim.conv2d],
+      weights_regularizer=slim.l2_regularizer(weight_decay),
+      weights_initializer=slim.variance_scaling_initializer(),
+      activation_fn=tf.nn.relu,
+      normalizer_fn=tf.contrib.layers.batch_norm,
+      normalizer_params=batch_norm_params):
+    #with slim.arg_scope([tf.contrib.layers.batch_norm], **batch_norm_params):
       # The following implies padding='SAME' for pool1, which makes feature
       # alignment easier for dense prediction tasks. This is also used in
       # https://github.com/facebook/fb.resnet.torch. However the accompanying
