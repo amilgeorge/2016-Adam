@@ -8,11 +8,14 @@ from net.segnet2 import NUM_CLASSES
 import tensorflow as tf
 import numpy as np
 from dataprovider.sampleinputprovider import SampleInputProvider
+from dataprovider.imgprovider import InputProvider
+
 from common.logger import getLogger
 from common.diskutils import ensure_dir
 from net import segnet2 as segnet
 import time
 import os
+import test_segnet2
 #import tracemalloc
 #import gc
 
@@ -22,16 +25,18 @@ VGG_16 = 'vgg_16'
 RESNET_50 = 'resnet_v1_50'
 HEAD = RESNET_50
 TAIL = 'tail'
+OFFSETS = [0]#list(range(1,7))#[10]
+offset_string = "-".join(str(x) for x in OFFSETS)
+RUN_ID = "segnet480pvgg-wl-dp2-osvos-val-O{}-3".format(offset_string)
 
-RUN_ID = "segnetvggwithskip-wl-osvos-O106-2"
 CHECKPOINT = None#'exp/segnetvggwithskip-half-wl-osvos-O10-1/iters-45000'
 
 EVENTS_DIR = os.path.join('events',RUN_ID)#time.strftime("%Y%m%d-%H%M%S")
 EXP_DIR = os.path.join('exp',RUN_ID)
 LOGS_DIR = os.path.join('logs',RUN_ID)
 
-IMG_HEIGHT = 360
-IMG_WIDTH = 480
+IMG_HEIGHT = 480
+IMG_WIDTH = 854
 
 #
 # def dump_garbage():
@@ -74,8 +79,8 @@ if __name__ == '__main__':
         keep_prob = tf.placeholder(tf.float32)
 
         is_training_pl = tf.placeholder(tf.bool,name="segnet_is_training")
-   
-     
+
+
                     
         #loss,logit = segnet.inference(inp, label, is_training_pl,weights)
         #loss,logit = segnet.inference_vgg16(inp, label, is_training_pl,weights)
@@ -90,6 +95,11 @@ if __name__ == '__main__':
         logit = tf.reshape(logit, (-1, NUM_CLASSES))
         out=tf.reshape(tf.nn.softmax(logit),[-1,IMG_HEIGHT,IMG_WIDTH,2])
 
+        net_dict = {"inp_pl": inp,
+                   "label_pl": label,
+                   "out": out,
+                   "is_training_pl": is_training_pl,
+                   "loss": loss}
 
         #out = tf.nn.softmax(logit)
         predictions = tf.arg_max(out, 3, "predictions")
@@ -115,7 +125,9 @@ if __name__ == '__main__':
         batch_size = segnet.BATCH_SIZE
             
         # Input Provider
-        inputProvider = SampleInputProvider(resize=[IMG_HEIGHT,IMG_WIDTH],is_dummy=False)
+        #inputProvider = SampleInputProvider(resize=[IMG_HEIGHT,IMG_WIDTH],is_dummy=False)
+        inputProvider = InputProvider(offsets =OFFSETS , is_dummy=False,db_type =0)
+
         #import pdb;
 
         #pdb.set_trace()
@@ -270,7 +282,7 @@ if __name__ == '__main__':
                     if (step > max_iters):
                         break
 
-                    result = sess.run([apply_gradient_op, loss,merged_summary,acc,precision,recall,tp_tensor,
+                    result = sess.run([apply_gradient_op, loss,merged_summary,acc,precision,recall,jaccard,tp_tensor,
                                        fn_tensor,fp_tensor,confusion_matrix],
                                       feed_dict={inp:sequence_batch.images,
                                                 label:sequence_batch.labels,
@@ -281,11 +293,9 @@ if __name__ == '__main__':
                     acc_value = result[3]
                     precision_value = result[4]
                     recall_value = result[5]
+                    jaccard_value = result[6]
 
-
-
-
-                    logger.info('iters:{}, seq_no:{} loss :{} accuracy:{} p:{} r:{}'.format(step, i, loss_value,acc_value,precision_value,recall_value))
+                    logger.info('iters:{}, seq_no:{} loss :{} accuracy:{} p:{} r:{} j:{}'.format(step, i, loss_value,acc_value,precision_value,recall_value,jaccard_value))
                     
                     if step%100 ==0:
                         #import pdb
@@ -295,8 +305,7 @@ if __name__ == '__main__':
                     
                     #io.imshow(out.eval())
                     #pass
-                    if step % 500 == 0:
-                        perform_validation(sess,step,test_summary_writer)
+
 
                     if step % 1000 == 0:
                         logger.info('Saving weights.')
@@ -304,6 +313,12 @@ if __name__ == '__main__':
                         logger.info('Flushing .')                        
                         train_summary_writer.flush()
                         test_summary_writer.flush()
+
+                    if step % 1000 == 0:
+                        perform_validation(sess,step,test_summary_writer)
+                        test_out_dir = os.path.join('test_out',RUN_ID,'iter-{}'.format(step))
+                        ensure_dir(test_out_dir)
+                        test_segnet2.test_network(sess,net_dict,test_out_dir,OFFSETS[0])
                 
             train_summary_writer.close()
             test_summary_writer.close()

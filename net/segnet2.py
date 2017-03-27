@@ -38,11 +38,11 @@ LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
 
 INITIAL_LEARNING_RATE = 0.001      # Initial learning rate.
 EVAL_BATCH_SIZE = 1
-BATCH_SIZE = 4
+BATCH_SIZE = 2
 READ_DATA_SIZE = 100
 # for CamVid
-IMAGE_HEIGHT = 360
-IMAGE_WIDTH = 480
+IMAGE_HEIGHT = 480
+IMAGE_WIDTH = 854
 IMAGE_DEPTH = 7
 
 NUM_CLASSES = 2
@@ -581,7 +581,7 @@ def inference_vgg16_withskip(images, labels, phase_train, weights=None):
     """ start upsample """
     # upsample4
     # Need to change when using different dataset out_w, out_h
-    upsample5 = deconv_layer(pool5, [2, 2, 512, 512], [batch_size, int(ceil(IMG_HEIGHT / 16)), int(np.ceil(IMG_WIDTH / 16)), 512], 2, "up5")
+    upsample5 = deconv_layer(pool5, [2, 2, 512, 512], [batch_size, int(np.ceil(IMG_HEIGHT / 16)), int(np.ceil(IMG_WIDTH / 16)), 512], 2, "up5")
     concat_5 = tf.concat(3, [upsample5,conv5_3], name='concat5')
     
     conv_decode5_3 = conv_layer_with_bn(concat_5, [3, 3, 1024, 512], phase_train, False, name="conv_decode5_3")
@@ -589,7 +589,7 @@ def inference_vgg16_withskip(images, labels, phase_train, weights=None):
     conv_decode5_1 = conv_layer_with_bn(conv_decode5_2, [3, 3, 512, 512], phase_train, False, name="conv_decode5_1")
 
     # upsample4 = upsample_with_pool_indices(pool4, pool4_indices, pool4.get_shape(), out_w=45, out_h=60, scale=2, name='upsample4')
-    upsample4 = deconv_layer(conv_decode5_1, [2, 2, 512, 512], [batch_size, int(IMG_HEIGHT / 8), int(IMG_WIDTH / 8), 512], 2, "up4")
+    upsample4 = deconv_layer(conv_decode5_1, [2, 2, 512, 512], [batch_size, int(np.ceil(IMG_HEIGHT / 8)), int(np.ceil(IMG_WIDTH / 8)), 512], 2, "up4")
     concat_4 = tf.concat(3, [upsample4,conv4_3], name='concat4')
 
     # decode 4
@@ -599,7 +599,7 @@ def inference_vgg16_withskip(images, labels, phase_train, weights=None):
 
     # upsample 3
     # upsample3 = upsample_with_pool_indices(conv_decode4, pool3_indices, conv_decode4.get_shape(), scale=2, name='upsample3')
-    upsample3 = deconv_layer(conv_decode4_1, [2, 2, 256, 256], [batch_size, int(IMG_HEIGHT / 4), int(IMG_WIDTH / 4), 256], 2,
+    upsample3 = deconv_layer(conv_decode4_1, [2, 2, 256, 256], [batch_size, int(np.ceil(IMG_HEIGHT / 4)), int(np.ceil(IMG_WIDTH / 4)), 256], 2,
                              "up3")
     concat_3 = tf.concat(3, [upsample3,conv3_3], name='concat3')
 
@@ -610,7 +610,7 @@ def inference_vgg16_withskip(images, labels, phase_train, weights=None):
 
     # upsample2
     # upsample2 = upsample_with_pool_indices(conv_decode3, pool2_indices, conv_decode3.get_shape(), scale=2, name='upsample2')
-    upsample2 = deconv_layer(conv_decode3_1, [2, 2, 128, 128], [batch_size, int(IMG_HEIGHT / 2), int(IMG_WIDTH / 2), 128], 2,
+    upsample2 = deconv_layer(conv_decode3_1, [2, 2, 128, 128], [batch_size, int(np.ceil(IMG_HEIGHT / 2)), int(np.ceil(IMG_WIDTH / 2)), 128], 2,
                              "up2")
     concat_2 = tf.concat(3, [upsample2,conv2_2], name='concat2')
 

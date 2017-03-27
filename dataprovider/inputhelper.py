@@ -9,6 +9,7 @@ from dataprovider.preprocess import vgg_preprocess
 from skimage import io,transform,morphology
 import scipy.ndimage as ndi
 import os
+
 def prev_mask_path(out_dir,seq_name, frame_no, offset):
     prev_frame_no = max(0,frame_no - offset)
     return mask_path(out_dir,seq_name,prev_frame_no)
@@ -160,7 +161,7 @@ def get_label_changes(label,prev_mask):
     return np.uint8(changes)
 
     
-def prepare_input_ch7(img,prev_mask,prev_img):
+def prepare_input_img(img,prev_mask,prev_img):
     """
     Prepare the input img for neural network. 
     All inputs must be of the same size
@@ -169,9 +170,16 @@ def prepare_input_ch7(img,prev_mask,prev_img):
     prev_mask -- the previous evaluated mask (0-1)
     prev_img -- previous RGB (0-255 range)
     """
-       
-    prev_mask = np.expand_dims(prev_mask,axis=2)*255  
- 
+    assert np.logical_or((prev_mask == 1), (prev_mask == 0)).all(), "expected 0 or 1 in binary prev mask"
+    assert (img >= 0).all() and (img<=255).all(), "expected img values range 0-255"
+    assert (prev_img >= 0).all() and (prev_img<=255).all(), "expected prev_img values range 0-255"
+
+    prev_mask = np.expand_dims(prev_mask,axis=2)
+
+    #print(img.shape)
+    #print(prev_mask.shape)
+    #print(prev_rgb.shape)
+
     # Concatenate images
     inp_img =  np.concatenate((img, prev_mask,prev_img), 2)
     

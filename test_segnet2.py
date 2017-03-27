@@ -8,7 +8,9 @@ import os
 import tensorflow as tf
 from net.refinenet import RefineNet
 from skimage import io,transform
-from dataprovider import sampleinputprovider
+#from dataprovider import sampleinputprovider
+from dataprovider import imgprovider
+
 from dataprovider.davis import DataAccessHelper
 from common.logger import getLogger
 import skimage
@@ -60,6 +62,9 @@ CHECKPOINT_38 = 'exp/segnetvggwithskip-half2-wl-osvos-O5-1/iters-90000'
 CHECKPOINT_39 = 'exp/segnetvggwithskip-half2-wl-osvos-O1-1/iters-90000'
 TESTPARAMS40 = ('exp/segnetvggwithskip-wl-distosvos-O1-1/iters-45000',1)
 TESTPARAMS41 = ('exp/segnetvggwithskip-wl-distosvos-O5-1/iters-45000',5)
+TESTPARAMS47 = ('exp/segnet480pvgg-wl-dp2-osvos-O1-1/iters-45000',1)
+TESTPARAMS48 = ('exp/segnet480pvgg-wl-dp2-osvos-lr001-O1-1/iters-30000',1)
+
 
 
 
@@ -67,9 +72,9 @@ CHECKPOINT = None
 OFFSET  = None
 
 learn_changes_mode = False
-use_gt_prev_mask = True
+use_gt_prev_mask = False
 
-SAVE_PREDICTIONS = True
+SAVE_PREDICTIONS = False
 
 davis = DataAccessHelper()
 logger = getLogger() 
@@ -79,8 +84,8 @@ EVENTS_DIR = os.path.join('events',RUN_ID)#time.strftime("%Y%m%d-%H%M%S")
 EXP_DIR = os.path.join('exp',RUN_ID)
 LOGS_DIR = os.path.join('logs',RUN_ID)
 
-IMAGE_HEIGHT = 360
-IMAGE_WIDTH = 480
+IMAGE_HEIGHT = 480
+IMAGE_WIDTH = 854
 
 
 def prev_mask_path(out_dir,seq_name, frame_no, offset):
@@ -148,7 +153,7 @@ def build_test_model():
                }
     return ret_val
     
-def test_sequence(session,net,sequence_name,out_dir,keep_size = True):
+def test_sequence(session,net,sequence_name,out_dir,keep_size = True, offset = OFFSET):
 
     mask_out_dir = os.path.join(out_dir,'480p')
     prob_map_dir = os.path.join(out_dir,'prob_maps')
@@ -163,17 +168,20 @@ def test_sequence(session,net,sequence_name,out_dir,keep_size = True):
         image_path = davis.image_path(sequence_name, frame_no)
 
         if use_gt_prev_mask:
-            prev_label_path = davis.construct_label_path(image_path, -1 * OFFSET)
+            prev_label_path = davis.construct_label_path(image_path, -1 * offset)
             prev_mask = davis.read_label(prev_label_path, [IMAGE_HEIGHT, IMAGE_WIDTH]) * 255
         else:
-            prev_label_path = prev_mask_path(mask_out_dir, sequence_name, frame_no , OFFSET)
+            if offset ==0:
+                prev_label_path = prev_mask_path(mask_out_dir, sequence_name, 0 , 0)
+            else:
+                prev_label_path = prev_mask_path(mask_out_dir, sequence_name, frame_no , offset)
             print("using prev mask {} for frame {}".format(prev_label_path,frame_no))
             prev_mask = read_label(prev_label_path, [IMAGE_HEIGHT, IMAGE_WIDTH])
             prev_mask = threshold_image(prev_mask)
             assert np.logical_or((prev_mask == 1), (prev_mask == 0)).all(), "expected 0 or 1 in binary mask"
             prev_mask = prev_mask * 255
 
-        inp_img = sampleinputprovider.prepare_input_ch7(image_path, prev_mask,offset = -1*OFFSET)
+        inp_img = imgprovider.prepare_input_ch7(image_path, prev_mask,offset = -1*offset)
         
         # Run model
         #prediction = net.im_predict(session,inp_img)
@@ -208,6 +216,13 @@ def test_sequence(session,net,sequence_name,out_dir,keep_size = True):
             pred_mask = transform.resize(pred_mask, img_shape)
         
         save_image(mask_out_dir, sequence_name, frame_no, skimage.img_as_ubyte(pred_mask))
+
+def test_network(sess,net,out_dir,offset = OFFSET):
+    test_sequences = davis.test_sequence_list() + davis.train_sequence_list()
+    for seq in test_sequences:
+        logger.info('Testing sequence: {}'.format(seq))
+        test_sequence(sess, net, seq, out_dir, offset = offset)
+
 
 def test_net(sequences,out_dir):
     #if sequences == None:
@@ -337,7 +352,7 @@ if __name__ == '__main__':
     #global CHECKPOINT
     #global OFFSET
 
-    test_points = [TESTPARAMS40]
+    test_points = [TESTPARAMS48]
 
     for tp in test_points:
         CHECKPOINT = tp[0]
@@ -356,7 +371,7 @@ if __name__ == '__main__':
         if(OFFSET >1):
             res_dir = res_dir+'-O{}'.format(OFFSET)
 
-        res_dir = res_dir +"-1"
+        res_dir = res_dir +"-iter30"
 
         out_dir = "../Results/{}".format(res_dir)
         logger.info("Output to: {}".format(out_dir))

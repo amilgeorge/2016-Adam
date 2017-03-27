@@ -21,8 +21,8 @@ import skimage.io
 import re
 from models import resnet_v1
 from net import segnet3 as segnet
-from dataprovider.sampleinputprovider import SampleInputProvider
-from dataprovider import sampleinputprovider
+#from dataprovider.inputprovider import InputProvider
+from dataprovider import imgprovider
 from common import diskutils
 from dataprovider.preprocess import vgg_preprocess, reverse_vgg_preprocess
 
@@ -34,4 +34,4 @@ IMAGE_HEIGHT = 360
 IMAGE_WIDTH = 480
 
 if __name__ == '__main__':
-    sampleinputprovider.test_gen_samples()
+    imgprovider.test_gen_samples()

@@ -8,7 +8,8 @@ import os
 import tensorflow as tf
 from net.refinenet import RefineNet
 from skimage import io,transform
-from dataprovider import sampleinputprovider
+#from dataprovider import sampleinputprovider
+from dataprovider import imgprovider
 from dataprovider.davis import DataAccessHelper
 from common.logger import getLogger
 import skimage
@@ -17,7 +18,7 @@ from net import segnet3 as segnet
 from dataprovider.finetuneinputprovider import FineTuneDataProvider
 from common.diskutils import ensure_dir
 import numpy as np
-from net import segnet3_1 as segnet_1
+from net import segnet4 as segnet4
 
 
 NETWORK = 'coarse'
@@ -65,6 +66,11 @@ TESTPARAMS41 = ('exp/segnetvggwithskip-wl-distosvos-O5-1/iters-45000',5)
 TESTPARAMS42 = ('exp/segnetV3-wl-osvos-O1-2/iters-45000',1)
 TESTPARAMS43 = ('exp/segnetV3_2-wl-osvos-O1-1/iters-45000',1)
 TESTPARAMS44 = ('exp/segnetV3_1-wl-osvos-O1-1/iters-30000',1)
+TESTPARAMS45 = ('exp/segnet480pV3-wl-dp2-osvos-O1-2/iters-45000',1)
+TESTPARAMS46 = ('exp/segnet480pV3_2-wl-dp2-osvos-O1-2/iters-45000',1)
+TESTPARAMS48 = ('exp/segnet480pV3_2-wl-osvos-O1-1/iters-45000',1)
+
+
 
 
 
@@ -72,7 +78,7 @@ CHECKPOINT = None
 OFFSET  = None
 
 learn_changes_mode = False
-use_gt_prev_mask = True
+use_gt_prev_mask = False
 
 SAVE_PREDICTIONS = False
 
@@ -84,8 +90,8 @@ EVENTS_DIR = os.path.join('events',RUN_ID)#time.strftime("%Y%m%d-%H%M%S")
 EXP_DIR = os.path.join('exp',RUN_ID)
 LOGS_DIR = os.path.join('logs',RUN_ID)
 
-IMAGE_HEIGHT = 360
-IMAGE_WIDTH = 480
+IMAGE_HEIGHT = 480
+IMAGE_WIDTH = 854
 
 def get_run_id():
     m = re.match(r"exp/(.*)/iter.*", CHECKPOINT)
@@ -135,12 +141,12 @@ def build_test_model():
 
     run_id = get_run_id()
 
-    if run_id.startswith("segnetV3_2"):
+    if run_id.startswith("segnet480pV3_2"):
         print("using V3_2")
         logit = segnet.inference2(inp, is_training_pl)
-    if run_id.startswith("segnetV3_1"):
-        print("using V3_1")
-        logit = segnet_1.inference(inp, is_training_pl, is_training = False)
+    elif run_id.startswith("segnet480pV3_1"):
+        print("using V4")
+        logit = segnet4.inference(inp, is_training_pl, is_training = False)
     else:
         logit = segnet.inference(inp, phase_train=is_training_pl,is_training = False)
     #logit = segnet.inference_vgg16_withdrop(inp,labels=None, phase_train=is_training_pl,keep_prob = keep_prob)
@@ -153,7 +159,7 @@ def build_test_model():
                }
     return ret_val
     
-def test_sequence(session,net,sequence_name,out_dir,keep_size = True):
+def test_sequence(session,net,sequence_name,out_dir,keep_size = False):
 
     mask_out_dir = os.path.join(out_dir,'480p')
     prob_map_dir = os.path.join(out_dir,'prob_maps')
@@ -179,7 +185,7 @@ def test_sequence(session,net,sequence_name,out_dir,keep_size = True):
             assert np.logical_or((prev_mask == 1), (prev_mask == 0)).all(), "expected 0 or 1 in binary mask"
             prev_mask = prev_mask * 255
 
-        inp_img = sampleinputprovider.prepare_input_ch7(image_path, prev_mask,offset = -1*OFFSET)
+        inp_img = imgprovider.prepare_input_ch7(image_path, prev_mask,offset = -1*OFFSET)
         
         # Run model
         #prediction = net.im_predict(session,inp_img)
@@ -343,7 +349,7 @@ if __name__ == '__main__':
     #global CHECKPOINT
     #global OFFSET
 
-    test_points = [TESTPARAMS44]
+    test_points = [TESTPARAMS48]
 
     for tp in test_points:
         CHECKPOINT = tp[0]

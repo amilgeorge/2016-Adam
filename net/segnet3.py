@@ -24,8 +24,8 @@ slim = tf.contrib.slim
 
 # modules
 
-IMG_HEIGHT = 360
-IMG_WIDTH = 480
+IMG_HEIGHT = 480
+IMG_WIDTH = 854
 NUM_CLASSES = 2
 BATCH_SIZE = 4
 

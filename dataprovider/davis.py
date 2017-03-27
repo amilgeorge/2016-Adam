@@ -150,5 +150,7 @@ class DataAccessHelper(object):
     
 if __name__ == '__main__':
     helper = DataAccessHelper()  
-    t = helper.test_sequecence_list()
+    img_path = helper.image_path("blackswan", 1)
+    img = helper.read_image(img_path,[480,854])
+    print(img.shape)
     

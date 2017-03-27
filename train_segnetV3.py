@@ -8,10 +8,12 @@ from net.segnet2 import NUM_CLASSES
 import tensorflow as tf
 import numpy as np
 from dataprovider.sampleinputprovider import SampleInputProvider
+from dataprovider.imgprovider import InputProvider
+
 from common.logger import getLogger
 from common.diskutils import ensure_dir
 from net import segnet3 as segnet
-from net import segnet3_1 as segnet_1
+from net import segnet4 as segnet4
 
 import time
 import os
@@ -27,16 +29,18 @@ RESNET_50 = 'resnet_v1_50'
 HEAD = RESNET_50
 TAIL = 'tail'
 
-networkarch = "V3"
-RUN_ID = "segnet{}-wl-osvos-O1-batchnorm3".format(networkarch)
+networkarch = "V3_2"
+OFFSETS = [1]#list(range(1,7))#[10]
+offset_string = "-".join(str(x) for x in OFFSETS)
+RUN_ID = "segnet480p{}-wl-dp2-osvos-O{}-2".format(networkarch,offset_string)
 CHECKPOINT = None#'exp/segnetvggwithskip-half-wl-osvos-O10-1/iters-45000'
 
 EVENTS_DIR = os.path.join('events',RUN_ID)#time.strftime("%Y%m%d-%H%M%S")
 EXP_DIR = os.path.join('exp',RUN_ID)
 LOGS_DIR = os.path.join('logs',RUN_ID)
 
-IMG_HEIGHT = 360
-IMG_WIDTH = 480
+IMG_HEIGHT = 480
+IMG_WIDTH = 854
 
 #
 # def dump_garbage():
@@ -85,9 +89,9 @@ if __name__ == '__main__':
         #loss,logit = segnet.inference(inp, label, is_training_pl,weights)
         #loss,logit = segnet.inference_vgg16(inp, label, is_training_pl,weights)
 
-        if networkarch == "V3_1":
+        if networkarch == "V4":
             logger.info('using arch :{}'.format(networkarch))
-            logit = segnet_1.inference(inp, is_training_pl)
+            logit = segnet4.inference(inp, is_training_pl)
         elif networkarch == "V3_2":
             logger.info('using arch :{}'.format(networkarch))
             logit = segnet.inference2(inp, is_training_pl)
@@ -127,7 +131,9 @@ if __name__ == '__main__':
         batch_size = segnet.BATCH_SIZE
             
         # Input Provider
-        inputProvider = SampleInputProvider(resize=[IMG_HEIGHT,IMG_WIDTH],is_dummy=False)
+        #inputProvider = SampleInputProvider(resize=[IMG_HEIGHT,IMG_WIDTH],is_dummy=False)
+        inputProvider = InputProvider(offsets =OFFSETS , is_dummy=False)
+
         #import pdb;
 
         #pdb.set_trace()
@@ -282,7 +288,7 @@ if __name__ == '__main__':
                     if (step > max_iters):
                         break
 
-                    result = sess.run([apply_gradient_op, loss,merged_summary,acc,precision,recall,tp_tensor,
+                    result = sess.run([apply_gradient_op, loss,merged_summary,acc,precision,recall,jaccard,tp_tensor,
                                        fn_tensor,fp_tensor,confusion_matrix],
                                       feed_dict={inp:sequence_batch.images,
                                                 label:sequence_batch.labels,
@@ -293,11 +299,12 @@ if __name__ == '__main__':
                     acc_value = result[3]
                     precision_value = result[4]
                     recall_value = result[5]
+                    jaccard_value = result[6]
 
 
 
 
-                    logger.info('iters:{}, seq_no:{} loss :{} accuracy:{} p:{} r:{}'.format(step, i, loss_value,acc_value,precision_value,recall_value))
+                    logger.info('iters:{}, seq_no:{} loss :{} accuracy:{} p:{} r:{} j:{}'.format(step, i, loss_value,acc_value,precision_value,recall_value,jaccard_value))
                     
                     if step%100 ==0:
                         #import pdb
