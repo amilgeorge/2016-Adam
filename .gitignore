@@ -1,6 +1,7 @@
 log/
 checkpoints/
 exp/
+test_out/
 events/
 .settings/
 *.pyc
@@ -8,3 +9,4 @@ events/
 *.prefs
 .idea/
 nohup*
+*.out

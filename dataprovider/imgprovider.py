@@ -29,7 +29,8 @@ IMAGE_WIDTH = 854
 
 davis = DataAccessHelper()
 def prepare_input_ch7(image_path, prev_mask, offset):
-    
+
+    assert offset<=0 ,"check offset .."
     # Read image
     img = davis.read_image(image_path, [IMAGE_HEIGHT,IMAGE_WIDTH])
     img = img*255
@@ -37,7 +38,12 @@ def prepare_input_ch7(image_path, prev_mask, offset):
     mask = np.expand_dims(prev_mask,axis=2)    
     
     # Read previous image
-    prev_img_path = davis.construct_image_path(image_path, offset= offset)
+    if offset==0:
+        name, frame_no = davis.split_path(image_path)
+        prev_img_path = davis.image_path(name, 0)
+    else:
+        prev_img_path = davis.construct_image_path(image_path, offset= offset)
+
     prev_img = davis.read_image(prev_img_path, [IMAGE_HEIGHT,IMAGE_WIDTH])
     prev_img = prev_img*255
     

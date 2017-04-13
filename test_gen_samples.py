@@ -22,7 +22,10 @@ import re
 from models import resnet_v1
 from net import segnet3 as segnet
 #from dataprovider.inputprovider import InputProvider
-from dataprovider import imgprovider
+#from dataprovider import imgprovider
+from dataprovider import mergenetdataprovider as inpprovider
+from dataprovider.davis_cached import DataAccessHelper as DataAccessHelperCached
+
 from common import diskutils
 from dataprovider.preprocess import vgg_preprocess, reverse_vgg_preprocess
 
@@ -30,8 +33,16 @@ slim = tf.contrib.slim
 
 # modules
 
-IMAGE_HEIGHT = 360
-IMAGE_WIDTH = 480
+
 
 if __name__ == '__main__':
-    imgprovider.test_gen_samples()
+    davis = DataAccessHelperCached([480,854])
+    label_path = davis.label_path('blackswan', 0)
+    print (label_path)
+    print (davis.split_path(label_path))
+    #prev_mask = davis.read_label(label_path, )*255
+    #print(prev_mask.dtype)
+
+
+
+    inpprovider.test_gen_samples()

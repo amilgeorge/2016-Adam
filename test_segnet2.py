@@ -64,7 +64,7 @@ TESTPARAMS40 = ('exp/segnetvggwithskip-wl-distosvos-O1-1/iters-45000',1)
 TESTPARAMS41 = ('exp/segnetvggwithskip-wl-distosvos-O5-1/iters-45000',5)
 TESTPARAMS47 = ('exp/segnet480pvgg-wl-dp2-osvos-O1-1/iters-45000',1)
 TESTPARAMS48 = ('exp/segnet480pvgg-wl-dp2-osvos-lr001-O1-1/iters-30000',1)
-
+TESTPARAMS49 = ('exp/segnet480pvgg-wl-dp2-osvos-val-O0-3/iters-45000',0)
 
 
 
@@ -160,7 +160,7 @@ def test_sequence(session,net,sequence_name,out_dir,keep_size = True, offset = O
     frames = davis.all_frames_nums(sequence_name)
     label_path = davis.label_path(sequence_name, min(frames))
     prev_mask = davis.read_label(label_path, [IMAGE_HEIGHT,IMAGE_WIDTH])*255
-    save_image(mask_out_dir, sequence_name, min(frames), davis.read_label(label_path))
+    save_image(mask_out_dir, sequence_name, min(frames), skimage.img_as_ubyte(davis.read_label(label_path, [IMAGE_HEIGHT,IMAGE_WIDTH])))
 
 
     for frame_no in range(min(frames)+1,max(frames)+1):
@@ -224,7 +224,7 @@ def test_network(sess,net,out_dir,offset = OFFSET):
         test_sequence(sess, net, seq, out_dir, offset = offset)
 
 
-def test_net(sequences,out_dir):
+def test_net(sequences,out_dir,offset = None):
     #if sequences == None:
     #    sequences=[name for name in os.listdir(inp_dir) if os.path.isdir(name)]
     
@@ -236,7 +236,7 @@ def test_net(sequences,out_dir):
         
         for seq in sequences:
             logger.info('Testing sequence: {}'.format(seq))
-            test_sequence(sess, net, seq,out_dir)
+            test_sequence(sess, net, seq,out_dir, offset = offset)
 
 def run_train_loop(seq,session,net,dp,ops,summary_writer,max_iters = 1000):
     step = 0
@@ -352,7 +352,7 @@ if __name__ == '__main__':
     #global CHECKPOINT
     #global OFFSET
 
-    test_points = [TESTPARAMS48]
+    test_points = [TESTPARAMS49]
 
     for tp in test_points:
         CHECKPOINT = tp[0]
@@ -368,11 +368,11 @@ if __name__ == '__main__':
         if(use_gt_prev_mask):
             res_dir = res_dir+'-gtmask'
 
-        if(OFFSET >1):
-            res_dir = res_dir+'-O{}'.format(OFFSET)
 
-        res_dir = res_dir +"-iter30"
+        res_dir = res_dir+'-O{}'.format(OFFSET)
+
+        res_dir = res_dir +"-1"
 
         out_dir = "../Results/{}".format(res_dir)
         logger.info("Output to: {}".format(out_dir))
-        test_net(test_sequences, out_dir=out_dir)
+        test_net(test_sequences, out_dir=out_dir,offset=OFFSET)

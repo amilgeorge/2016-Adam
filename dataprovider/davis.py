@@ -89,15 +89,25 @@ class DataAccessHelper(object):
             image = transform.resize(image,resize)
         
         return image
-    
-    def read_label(self,label_path,resize = None):
+
+    def threshold_image(self,image, threshold=0.5):
+        image[image < threshold] = 0
+        image[image >= threshold] = 1
+        return image
+
+    def read_label(self,label_path,resize = None,threshold = True):
         
         full_path = self.__fullpath(label_path)
         image = io.imread(full_path,as_grey=True)
         
         if resize != None:
             image = transform.resize(image,resize)
-            
+
+        if(threshold):
+            image = self.threshold_image(image)
+
+        assert np.logical_or((image == 1), (image == 0)).all(), "expected 0 or 1 in binary label"
+
         return image
     
     def construct_image_path(self,image_path,offset = None):

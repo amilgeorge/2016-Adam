@@ -342,8 +342,8 @@ def batch_norm_layer(inputT, is_training, scope):
 def inference(images, labels, phase_train,weights = None):
     #batch_size = BATCH_SIZE
     batch_size = tf.shape(images)[0]
-    IMG_HEIGHT = IMAGE_HEIGHT
-    IMG_WIDTH = IMAGE_WIDTH
+    IMG_HEIGHT = tf.shape(images)[1]#IMAGE_HEIGHT
+    IMG_WIDTH = tf.shape(images)[2]#IMAGE_WIDTH
     # norm1
     #norm1 = tf.nn.lrn(images, depth_radius=5, bias=1.0, alpha=0.0001, beta=0.75,
     #            name='norm1')
@@ -468,6 +468,8 @@ def inference_vgg16(images, labels, phase_train, weights=None):
     # pool5
     pool5, pool5_indices = tf.nn.max_pool_with_argmax(conv5_3, ksize=[1, 2, 2, 1],
                                                       strides=[1, 2, 2, 1], padding='SAME', name='pool5')
+
+    print(pool5)
     """ End of encoder """
     """ start upsample """
     # upsample4
@@ -526,8 +528,8 @@ def inference_vgg16(images, labels, phase_train, weights=None):
     else:
         loss = cal_loss(conv_classifier, labels, weights)
         return loss, logit
-    
-def inference_vgg16_withskip(images, labels, phase_train, weights=None):
+
+def inference_encoder_decoder(images,phase_train):
     # batch_size = BATCH_SIZE
     batch_size = tf.shape(images)[0]
     IMG_HEIGHT = IMAGE_HEIGHT
@@ -547,7 +549,7 @@ def inference_vgg16_withskip(images, labels, phase_train, weights=None):
 
     # conv2
     conv2_1 = conv_layer_with_bn(pool1, [3, 3, 64, 128], phase_train, name="conv2_1")
-    conv2_2 = conv_layer_with_bn(conv2_1, [3, 3, 128,128], phase_train, name="conv2_2")
+    conv2_2 = conv_layer_with_bn(conv2_1, [3, 3, 128, 128], phase_train, name="conv2_2")
 
     # pool2
     pool2, pool2_indices = tf.nn.max_pool_with_argmax(conv2_2, ksize=[1, 2, 2, 1],
@@ -573,7 +575,6 @@ def inference_vgg16_withskip(images, labels, phase_train, weights=None):
     conv5_2 = conv_layer_with_bn(conv5_1, [3, 3, 512, 512], phase_train, name="conv5_2")
     conv5_3 = conv_layer_with_bn(conv5_2, [3, 3, 512, 512], phase_train, name="conv5_3")
 
-
     # pool5
     pool5, pool5_indices = tf.nn.max_pool_with_argmax(conv5_3, ksize=[1, 2, 2, 1],
                                                       strides=[1, 2, 2, 1], padding='SAME', name='pool5')
@@ -581,16 +582,18 @@ def inference_vgg16_withskip(images, labels, phase_train, weights=None):
     """ start upsample """
     # upsample4
     # Need to change when using different dataset out_w, out_h
-    upsample5 = deconv_layer(pool5, [2, 2, 512, 512], [batch_size, int(np.ceil(IMG_HEIGHT / 16)), int(np.ceil(IMG_WIDTH / 16)), 512], 2, "up5")
-    concat_5 = tf.concat(3, [upsample5,conv5_3], name='concat5')
-    
+    upsample5 = deconv_layer(pool5, [2, 2, 512, 512],
+                             [batch_size, int(np.ceil(IMG_HEIGHT / 16)), int(np.ceil(IMG_WIDTH / 16)), 512], 2, "up5")
+    concat_5 = tf.concat(3, [upsample5, conv5_3], name='concat5')
+
     conv_decode5_3 = conv_layer_with_bn(concat_5, [3, 3, 1024, 512], phase_train, False, name="conv_decode5_3")
     conv_decode5_2 = conv_layer_with_bn(conv_decode5_3, [3, 3, 512, 512], phase_train, False, name="conv_decode5_2")
     conv_decode5_1 = conv_layer_with_bn(conv_decode5_2, [3, 3, 512, 512], phase_train, False, name="conv_decode5_1")
 
     # upsample4 = upsample_with_pool_indices(pool4, pool4_indices, pool4.get_shape(), out_w=45, out_h=60, scale=2, name='upsample4')
-    upsample4 = deconv_layer(conv_decode5_1, [2, 2, 512, 512], [batch_size, int(np.ceil(IMG_HEIGHT / 8)), int(np.ceil(IMG_WIDTH / 8)), 512], 2, "up4")
-    concat_4 = tf.concat(3, [upsample4,conv4_3], name='concat4')
+    upsample4 = deconv_layer(conv_decode5_1, [2, 2, 512, 512],
+                             [batch_size, int(np.ceil(IMG_HEIGHT / 8)), int(np.ceil(IMG_WIDTH / 8)), 512], 2, "up4")
+    concat_4 = tf.concat(3, [upsample4, conv4_3], name='concat4')
 
     # decode 4
     conv_decode4_3 = conv_layer_with_bn(concat_4, [3, 3, 1024, 512], phase_train, False, name="conv_decode4_3")
@@ -599,9 +602,10 @@ def inference_vgg16_withskip(images, labels, phase_train, weights=None):
 
     # upsample 3
     # upsample3 = upsample_with_pool_indices(conv_decode4, pool3_indices, conv_decode4.get_shape(), scale=2, name='upsample3')
-    upsample3 = deconv_layer(conv_decode4_1, [2, 2, 256, 256], [batch_size, int(np.ceil(IMG_HEIGHT / 4)), int(np.ceil(IMG_WIDTH / 4)), 256], 2,
+    upsample3 = deconv_layer(conv_decode4_1, [2, 2, 256, 256],
+                             [batch_size, int(np.ceil(IMG_HEIGHT / 4)), int(np.ceil(IMG_WIDTH / 4)), 256], 2,
                              "up3")
-    concat_3 = tf.concat(3, [upsample3,conv3_3], name='concat3')
+    concat_3 = tf.concat(3, [upsample3, conv3_3], name='concat3')
 
     # decode 3
     conv_decode3_3 = conv_layer_with_bn(concat_3, [3, 3, 512, 256], phase_train, False, name="conv_decode3_3")
@@ -610,9 +614,10 @@ def inference_vgg16_withskip(images, labels, phase_train, weights=None):
 
     # upsample2
     # upsample2 = upsample_with_pool_indices(conv_decode3, pool2_indices, conv_decode3.get_shape(), scale=2, name='upsample2')
-    upsample2 = deconv_layer(conv_decode3_1, [2, 2, 128, 128], [batch_size, int(np.ceil(IMG_HEIGHT / 2)), int(np.ceil(IMG_WIDTH / 2)), 128], 2,
+    upsample2 = deconv_layer(conv_decode3_1, [2, 2, 128, 128],
+                             [batch_size, int(np.ceil(IMG_HEIGHT / 2)), int(np.ceil(IMG_WIDTH / 2)), 128], 2,
                              "up2")
-    concat_2 = tf.concat(3, [upsample2,conv2_2], name='concat2')
+    concat_2 = tf.concat(3, [upsample2, conv2_2], name='concat2')
 
     # decode 2
     conv_decode2_2 = conv_layer_with_bn(concat_2, [3, 3, 256, 128], phase_train, False, name="conv_decode2_2")
@@ -621,12 +626,16 @@ def inference_vgg16_withskip(images, labels, phase_train, weights=None):
     # upsample1
     # upsample1 = upsample_with_pool_indices(conv_decode2, pool1_indices, conv_decode2.get_shape(), scale=2, name='upsample1')
     upsample1 = deconv_layer(conv_decode2_1, [2, 2, 64, 64], [batch_size, IMG_HEIGHT, IMG_WIDTH, 64], 2, "up1")
-    concat_1 = tf.concat(3, [upsample1,conv1_2], name='concat1')
+    concat_1 = tf.concat(3, [upsample1, conv1_2], name='concat1')
 
     # decode4
     conv_decode1_2 = conv_layer_with_bn(concat_1, [3, 3, 128, 64], phase_train, False, name="conv_decode1_2")
     conv_decode1_1 = conv_layer_with_bn(conv_decode1_2, [3, 3, 64, 64], phase_train, False, name="conv_decode1_1")
+    return conv_decode1_1
 
+def inference_vgg16_withskip(images, labels, phase_train, weights=None):
+
+    conv_decode1_1 = inference_encoder_decoder(images,phase_train)
     """ end of Decode """
     """ Start Classify """
     # output predicted class number (6)
@@ -646,6 +655,54 @@ def inference_vgg16_withskip(images, labels, phase_train, weights=None):
         loss = cal_loss(conv_classifier, labels, weights)
         return loss, logit
 
+
+def inference_merge_two_branch(images_branch1,images_branch2, labels, phase_train, weights=None):
+    with tf.variable_scope('branch1') as scope:
+        branch1 = inference_encoder_decoder(images_branch1,phase_train)
+    with tf.variable_scope('branch2') as scope:
+        branch2 = inference_encoder_decoder(images_branch2,phase_train)
+
+    with tf.variable_scope('merger') as scope:
+        net = tf.concat(3, [branch1, branch2], name='merged_b1_b2')
+        net = tf.stop_gradient(net, name='merged_b1_b2_sg')
+
+        net = conv_layer_with_bn(net, [3, 3, 128, 64], phase_train, False, name="merge_conv1")
+        net = conv_layer_with_bn(net, [3, 3, 64, 64], phase_train, False, name="merge_conv2")
+        net = conv_layer_with_bn(net, [3, 3, 64, 32], phase_train, False, name="merge_conv3")
+
+
+    """ end of Decode """
+    """ Start Classify """
+    # output predicted class number (6)
+    with tf.variable_scope('conv_classifier') as scope:
+        kernel = _variable_with_weight_decay('weights',
+                                             shape=[1, 1, 32, NUM_CLASSES],
+                                             initializer=msra_initializer(1, 32),
+                                             wd=0.0005)
+        conv = tf.nn.conv2d(net, kernel, [1, 1, 1, 1], padding='SAME')
+        biases = _variable_on_cpu('biases', [NUM_CLASSES], tf.constant_initializer(0.1))
+        conv_classifier = tf.nn.bias_add(conv, biases, name=scope.name)
+
+    logit = conv_classifier
+    if labels is None:
+        return logit
+    else:
+        loss = cal_loss(conv_classifier, labels, weights)
+        return loss, logit
+
+def initialize_merge_net(sess,checkpoint_branch1,checkpoint_branch2):
+    all_vars = tf.all_variables()
+    print([v.op.name for v in all_vars])
+    branch1_vars = {v.op.name.replace("branch1/",""):v for v in all_vars if v.name.startswith("branch1")}
+    branch2_vars = {v.op.name.replace("branch2/",""):v for v in all_vars if v.name.startswith("branch2")}
+    print(branch1_vars)
+    print(branch2_vars)
+
+    saver_branch1 = tf.train.Saver(branch1_vars)
+    saver_branch2 = tf.train.Saver(branch2_vars)
+
+    saver_branch1.restore(sess, checkpoint_branch1)
+    saver_branch2.restore(sess, checkpoint_branch2)
 
 def inference_vgg16_withdrop(images, labels, phase_train, weights=None,keep_prob = 1.0):
     # batch_size = BATCH_SIZE

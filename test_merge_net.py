@@ -8,7 +8,9 @@ import os
 import tensorflow as tf
 from net.refinenet import RefineNet
 from skimage import io,transform
+#from dataprovider import sampleinputprovider
 from dataprovider import imgprovider
+
 from dataprovider.davis import DataAccessHelper
 from common.logger import getLogger
 import skimage
@@ -17,7 +19,6 @@ from net import segnet2 as segnet
 from dataprovider.finetuneinputprovider import FineTuneDataProvider
 from common.diskutils import ensure_dir
 import numpy as np
-import matplotlib.pyplot as plt
 
 NETWORK = 'coarse'
 CHECKPOINT_1 = 'exp/refine-test_1/iters-38609'
@@ -45,7 +46,7 @@ CHECKPOINT_22 = 'exp/segnetvgg-res2-ch7-aug-wl-osvos-7/iters-30000'
 CHECKPOINT_23 = 'exp/segnetvggwithskip-res2-ch7-aug-wl-osvos-1/iters-30000'
 CHECKPOINT_24 = 'exp/segnetvggwithskip-res2-ch7-aug-wl-P3N1-1/iters-30000'
 CHECKPOINT_25 = 'exp/segnetvggwithskip-res2-ch7-aug-wl-ldiffosvos-1/iters-30000'
-CHECKPOINT_26 = 'exp/segnetvggwithskip-res2-ch7-aug-wl-osvos-O5-1/iters-45000'
+CHECKPOINT_26 = ('exp/segnetvggwithskip-res2-ch7-aug-wl-osvos-O5-1/iters-45000',5)
 CHECKPOINT_27 = 'exp/segnetvggwithskip-res2-ch7-aug-wl-osvos-O1O6-1/iters-45000'
 CHECKPOINT_28 = 'exp/segnetvggwithskip-res2-ch7-aug-wl-osvos-O10-1/iters-45000'
 CHECKPOINT_29 = 'exp/segnetvggwithskip-res2-ch7-aug-wl-dist-O5-1/iters-36000'
@@ -53,22 +54,27 @@ CHECKPOINT_30 = 'exp/segnetvggwithdrop-wl-osvos-O1-1/iters-45000'
 CHECKPOINT_31 = 'exp/segnetvggwithdrop-half-wl-osvos-O1-1/iters-45000'
 CHECKPOINT_32 = 'exp/segnetvggwithdrop-half2-wl-osvos-O1-1/iters-90000'
 CHECKPOINT_33 = 'exp/segnetvggwithdrop-wl-osvos-O1O6-1/iters-45000'
+CHECKPOINT_34 = 'exp/segnetvggwithskip-half-wl-osvos-O1-1/iters-45000'
+CHECKPOINT_35 = 'exp/segnetvggwithskip-half-wl-osvos-O10-1/iters-45000'
+CHECKPOINT_36 = 'exp/segnetvggwithskip-half-wl-osvos-O5-1/iters-45000'
+CHECKPOINT_37 = 'exp/segnetvggwithskip-half2-wl-osvos-O10-1/iters-90000'
+CHECKPOINT_38 = 'exp/segnetvggwithskip-half2-wl-osvos-O5-1/iters-90000'
+CHECKPOINT_39 = 'exp/segnetvggwithskip-half2-wl-osvos-O1-1/iters-90000'
+TESTPARAMS40 = ('exp/segnetvggwithskip-wl-distosvos-O1-1/iters-45000',1)
+TESTPARAMS41 = ('exp/segnetvggwithskip-wl-distosvos-O5-1/iters-45000',5)
+TESTPARAMS47 = ('exp/segnet480pvgg-wl-dp2-osvos-O1-1/iters-45000',1)
+TESTPARAMS48 = ('exp/segnet480pvgg-wl-dp2-osvos-lr001-O1-1/iters-30000',1)
 
-TESTPARAMS_34 =('exp/segnetvggwithskip-res2-ch7-aug-wl-osvos-1/iters-30000',1)
-TESTPARAMS_35 =('exp/segnetvggwithskip-res2-ch7-aug-wl-osvos-O5-1/iters-45000',5)
-TESTPARAMS_36 =('exp/segnetvggwithskip-res2-ch7-aug-wl-osvos-O10-1/iters-45000',10)
-
-TESTPARAMS_37 =('exp/segnet480pvgg-wl-dp2-osvos-val-O1-3/iters-45000',1)
-TESTPARAMS_38 =('exp/segnet480pvgg-wl-dp2-osvos-val-O0-3/iters-45000',0)
 
 
-TESTPARAMS = [TESTPARAMS_37,TESTPARAMS_38]
+
+CHECKPOINT = None
+OFFSET  = None
 
 learn_changes_mode = False
 use_gt_prev_mask = False
 
 SAVE_PREDICTIONS = False
-MONTE_CARLO_SAMPLES = 50
 
 davis = DataAccessHelper()
 logger = getLogger() 
@@ -81,17 +87,6 @@ LOGS_DIR = os.path.join('logs',RUN_ID)
 IMAGE_HEIGHT = 480
 IMAGE_WIDTH = 854
 
-
-def save_fig(out_dir,seq_name,frame_no,img):
-    out_seq_dir = os.path.join(out_dir, seq_name)
-    os.makedirs(out_seq_dir,exist_ok = True)
-    out_fig_path = os.path.join(out_seq_dir,'{0:05}.png'.format(frame_no))
-    fig = plt.figure()
-    plt.imshow(img)
-    plt.colorbar()
-    fig.tight_layout()
-    fig.savefig(out_fig_path, dpi=fig.dpi)
-    plt.close(fig)
 
 def prev_mask_path(out_dir,seq_name, frame_no, offset):
     prev_frame_no = max(0,frame_no - offset)
@@ -126,6 +121,7 @@ def save_prediction(out_dir,sequence_name,frame_no,prediction):
     out_path = os.path.join(out_seq_dir, '{0:05}.npy'.format(frame_no))
     np.save(out_path, prediction)
 
+
     
 def build_test_model():
     inp = tf.placeholder(tf.float32,shape=[None,IMAGE_HEIGHT,IMAGE_WIDTH,7],name='input')
@@ -139,14 +135,11 @@ def build_test_model():
     out = tf.reshape(tf.nn.softmax(logit),[-1,IMAGE_HEIGHT,IMAGE_WIDTH,segnet.NUM_CLASSES])
     ret_val = {"inp_pl":inp,
                "out" : out,
-               "is_training_pl":is_training_pl,
-               "keep_prob":keep_prob}
+               "is_training_pl":is_training_pl
+               }
     return ret_val
 
-def get_previous_mask(mask_out_dir,sequence_name,frame_no,offset):
-
-    image_path = davis.image_path(sequence_name, frame_no)
-
+def get_prev_mask(mask_out_dir,sequence_name,frame_no,offset):
     if offset == 0:
         prev_label_path = prev_mask_path(mask_out_dir, sequence_name, 0, 0)
     else:
@@ -154,63 +147,42 @@ def get_previous_mask(mask_out_dir,sequence_name,frame_no,offset):
     print("using prev mask {} for frame {}".format(prev_label_path, frame_no))
     prev_mask = read_label(prev_label_path, [IMAGE_HEIGHT, IMAGE_WIDTH])
     prev_mask = threshold_image(prev_mask)
-    zeros = np.where(prev_mask == 0)
-    ones = np.where(prev_mask == 1)
-    print ("Zeros:{},Ones:{}".format(len(zeros[0]),len(ones[0])))
     assert np.logical_or((prev_mask == 1), (prev_mask == 0)).all(), "expected 0 or 1 in binary mask"
     prev_mask = prev_mask * 255
+    return prev_mask
 
-    return  prev_mask
-
-
-def test_sequence(session,net,sequence_name,out_dir,keep_size = True):
+def test_sequence(session,net,sequence_name,out_dir,branch1_offset,branch2_offset,keep_size = True):
 
     mask_out_dir = os.path.join(out_dir,'480p')
     prob_map_dir = os.path.join(out_dir,'prob_maps')
-    var_dir = os.path.join(out_dir,'var')
-
     frames = davis.all_frames_nums(sequence_name)
     label_path = davis.label_path(sequence_name, min(frames))
     prev_mask = davis.read_label(label_path, [IMAGE_HEIGHT,IMAGE_WIDTH])*255
     save_image(mask_out_dir, sequence_name, min(frames), skimage.img_as_ubyte(davis.read_label(label_path, [IMAGE_HEIGHT,IMAGE_WIDTH])))
 
+
     for frame_no in range(min(frames)+1,max(frames)+1):
         #Prepare input
         image_path = davis.image_path(sequence_name, frame_no)
 
-        num_models = len(TESTPARAMS)
-        all_preds = np.zeros((IMAGE_HEIGHT, IMAGE_WIDTH, num_models))
+        prev_mask_branch1 = get_prev_mask(mask_out_dir,sequence_name,frame_no,branch1_offset)
+        prev_mask_branch2 = get_prev_mask(mask_out_dir,sequence_name,frame_no,branch2_offset)
 
-        inp = net['inp_pl']
+
+        inp_branch1_img = imgprovider.prepare_input_ch7(image_path, prev_mask_branch1,offset = -1*branch1_offset)
+        inp_branch2_img = imgprovider.prepare_input_ch7(image_path, prev_mask_branch2,offset = -1*branch2_offset)
+
+        # Run model
+        inp_branch1_pl = net['inp_branch1_pl']
+        inp_branch2_pl = net['inp_branch2_pl']
         is_training_pl = net['is_training_pl']
+        #keep_prob = net['keep_prob']
         out = net['out']
-
-        for i,testparam in enumerate(TESTPARAMS) :
-            checkpoint = testparam[0]
-            offset = testparam[1]
-
-            restorer2 = tf.train.Saver()
-            restorer2.restore(session, checkpoint)
-            print("Restoring checkpoint :{}".format(checkpoint))
-
-            # Run model
-            #prediction = net.im_predict(session,inp_img)
-
-
-            prev_mask = get_previous_mask(mask_out_dir,sequence_name,frame_no,offset)
-            inp_img = imgprovider.prepare_input_ch7(image_path, prev_mask,offset=-1*offset)
-
-
-            print ("running sample:{}".format(i))
-            result = session.run([out],
-                                 feed_dict={inp:inp_img,
-                                 is_training_pl:False,
-                                 })
-            #prediction = result[0][0,:,:,1]
-            all_preds[:,:,i] = result[0][0,:,:,1]
-
-        prediction = np.mean(all_preds,axis=2)
-        variance = np.var(all_preds,axis=2)
+        result = session.run([out], 
+                             feed_dict={inp_branch1_pl:inp_branch1_img,
+                                        inp_branch2_pl:inp_branch2_img,
+                             is_training_pl:False})
+        prediction = result[0][0,:,:,1]
 
         #print(result[0][0,1,1,1],result[0][0,1,1,0])
         if SAVE_PREDICTIONS:
@@ -234,8 +206,12 @@ def test_sequence(session,net,sequence_name,out_dir,keep_size = True):
             pred_mask = transform.resize(pred_mask, img_shape)
         
         save_image(mask_out_dir, sequence_name, frame_no, skimage.img_as_ubyte(pred_mask))
-        save_fig(var_dir, sequence_name, frame_no, variance)
 
+def test_network(sess,net,out_dir,branch1_offset,branch2_offset):
+    test_sequences = davis.test_sequence_list() + davis.train_sequence_list()
+    for seq in test_sequences:
+        logger.info('Testing sequence: {}'.format(seq))
+        test_sequence(sess, net, seq, out_dir, branch1_offset = branch1_offset, branch2_offset=branch2_offset)
 
 
 def test_net(sequences,out_dir):
@@ -244,7 +220,10 @@ def test_net(sequences,out_dir):
     
     net = build_test_model()
     
-    with tf.Session(config=tf.ConfigProto(log_device_placement=False)) as sess:
+    with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess:
+        restorer2 = tf.train.Saver()
+        restorer2.restore(sess,CHECKPOINT)
+        
         for seq in sequences:
             logger.info('Testing sequence: {}'.format(seq))
             test_sequence(sess, net, seq,out_dir)
@@ -252,23 +231,30 @@ def test_net(sequences,out_dir):
 
         
 if __name__ == '__main__':
-    #test_sequences = davis.test_sequence_list()[13:]+davis.train_sequence_list()
-    test_sequences = davis.train_sequence_list()[23:]
-    #test_sequences = ['paragliding-launch']
-    #m=re.match(r"exp/(.*)/iter.*",CHECKPOINT)
-    #res_dir = m.group(1)
-    print ("Aggregating networks,",TESTPARAMS)
+    #global CHECKPOINT
+    #global OFFSET
 
-    res_dir = "mean-agg_networks-01-00-33"
-    if(use_gt_prev_mask):
-        res_dir = res_dir+'-gtmask'
+    test_points = [TESTPARAMS48]
 
-    #if(OFFSET >1):
-    #    res_dir = res_dir+'-O{}'.format(OFFSET)
+    for tp in test_points:
+        CHECKPOINT = tp[0]
+        OFFSET = tp[1]
 
-    #res_dir = res_dir + "-S{}".format(MONTE_CARLO_SAMPLES)
-    res_dir = res_dir +"-1"
+        test_sequences = davis.test_sequence_list()+davis.train_sequence_list()
+        #test_sequences = ['paragliding-launch']
+        m=re.match(r"exp/(.*)/iter.*",CHECKPOINT)
+        res_dir = m.group(1)
 
-    out_dir = "../Results/{}".format(res_dir)
-    logger.info("Output to: {}".format(out_dir))    
-    test_net(test_sequences, out_dir=out_dir)
+        print ("Testing for {}".format(res_dir) )
+
+        if(use_gt_prev_mask):
+            res_dir = res_dir+'-gtmask'
+
+        if(OFFSET >1):
+            res_dir = res_dir+'-O{}'.format(OFFSET)
+
+        res_dir = res_dir +"-iter30"
+
+        out_dir = "../Results/{}".format(res_dir)
+        logger.info("Output to: {}".format(out_dir))
+        test_net(test_sequences, out_dir=out_dir)

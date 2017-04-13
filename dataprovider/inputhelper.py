@@ -166,13 +166,13 @@ def prepare_input_img(img,prev_mask,prev_img):
     Prepare the input img for neural network. 
     All inputs must be of the same size
     Keyword arguments:
-    img -- the current image frame (0-255 range RGB)
+    img -- the current image frame (0-1 range RGB)
     prev_mask -- the previous evaluated mask (0-1)
-    prev_img -- previous RGB (0-255 range)
+    prev_img -- previous RGB (0-1 range)
     """
     assert np.logical_or((prev_mask == 1), (prev_mask == 0)).all(), "expected 0 or 1 in binary prev mask"
-    assert (img >= 0).all() and (img<=255).all(), "expected img values range 0-255"
-    assert (prev_img >= 0).all() and (prev_img<=255).all(), "expected prev_img values range 0-255"
+    assert (img >= 0).all() and (img<=1).all(), "expected img values range 0-255"
+    assert (prev_img >= 0).all() and (prev_img<=1).all(), "expected prev_img values range 0-255"
 
     prev_mask = np.expand_dims(prev_mask,axis=2)
 
@@ -188,6 +188,8 @@ def prepare_input_img(img,prev_mask,prev_img):
     
     
     return inp_img
+
+
 
 if __name__ == '__main__':
     l = np.zeros((2,3))
