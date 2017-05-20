@@ -14,6 +14,7 @@ import shutil,pickle
 import matplotlib.pyplot as plt
 from PIL import Image
 from dataprovider import inputhelper
+import skimage
 
 class DB:
     pass
@@ -25,29 +26,27 @@ class DataAccessHelper(object):
     '''
 
 
-    def __init__(self,load_cached = True):
+    def __init__(self,resize=[480,854],load_cached = True):
         '''
         Constructor
         '''
-        self.image_set = '2017'
-        self.base_dir = os.path.join('/work/george/davis_new','DAVIS/')
+        self.image_set = '2016'
+        self.base_dir = os.path.join('/work/george','DAVIS/')
         
         self.image_sets_dir = os.path.join(self.base_dir,'ImageSets')
 
-        self.max_size = [480,1152]
+        self.max_size = [480,854]
         self.image_path_prefix = os.path.join('JPEGImages','480p')
         self.annotations_prefix = os.path.join('Annotations','480p')
-        self.db_info = None #os.path.join('Annotations','db_info.yml')
+        self.db_info = os.path.join('Annotations','db_info.yml')
         self.cache_dir = os.path.join('/work/george','cache','davis{}_cache'.format(self.image_set))
 
-        self.train_set_info = np.loadtxt(os.path.join(self.image_sets_dir,self.image_set,'train.txt'), dtype=bytes,unpack=False).astype(str)
-        self.val_set_info = np.loadtxt(os.path.join(self.image_sets_dir,self.image_set,'val.txt'), dtype=bytes,unpack=False).astype(str)
-        self.testdev_set_info = np.loadtxt(os.path.join(self.image_sets_dir,self.image_set,'test-dev.txt'), dtype=bytes,unpack=False).astype(str)
-
+        self.train_set_info = np.loadtxt(os.path.join(self.image_sets_dir,'480p','train.txt'), dtype=bytes,unpack=False).astype(str)
+        self.val_set_info = np.loadtxt(os.path.join(self.image_sets_dir,'480p','val.txt'), dtype=bytes,unpack=False).astype(str)
         self.loaded = False
         if load_cached:
             self.db = self.load_cached_db()
-            self.loaded = True
+
 
     def read_db_info(self):
         with open(self.__fullpath(self.db_info),'r') as f:
@@ -77,12 +76,13 @@ class DataAccessHelper(object):
             if os.path.isdir(self.cache_dir):
                 shutil.rmtree(self.cache_dir)
             diskutils.ensure_dir(self.cache_dir)
-            self.prepare_cache_2017(images_cached_file,labels_cached_file,index_dict_file)
+            self.prepare_cache(images_cached_file,labels_cached_file,index_dict_file)
 
         db = DB()
         db.name_idx_dict = pickle.load(open(index_dict_file, "rb"))
         db.images = np.load(images_cached_file, mmap_mode='r')
         db.labels = np.load(labels_cached_file, mmap_mode='r')
+        self.loaded = True
         return db
 
     def prepare_cache_2017(self,images_cached_file,labels_cached_file,index_dict_file):
@@ -137,11 +137,11 @@ class DataAccessHelper(object):
         num_train_images = self.train_set_info.shape[0]
         num_val_images = self.val_set_info.shape[0]
         num_images = num_train_images + num_val_images
-        images_mmap = np.lib.format.open_memmap(images_cached_file, dtype='float32', mode='w+',
+        images_mmap = np.lib.format.open_memmap(images_cached_file, dtype='uint8', mode='w+',
                                                 shape=tuple(
-                                                    [num_images] + self.resize + [3]))
-        labels_mmap = np.lib.format.open_memmap(labels_cached_file, dtype='float32', mode='w+',
-                                                shape=tuple([num_images] + self.resize))
+                                                    [num_images] + self.max_size + [3]))
+        labels_mmap = np.lib.format.open_memmap(labels_cached_file, dtype='uint8', mode='w+',
+                                                shape=tuple([num_images] + self.max_size))
 
         data_set_info = np.vstack((self.train_set_info,self.val_set_info))
 
@@ -151,10 +151,11 @@ class DataAccessHelper(object):
             image_file = image_file[1:]
             label_file = data_set_info[i, 1]
             label_file = label_file[1:]
+            print(label_file)
             seq, frame_no = self.split_path(image_file)
 
-            image = self.read_image_disk(image_file,self.resize)
-            label = self.read_label_disk(label_file, self.resize)
+            image = self.read_image_disk(image_file)
+            label = self.read_label_disk(label_file)
             name_idx_dict[seq][frame_no] = i
             images_mmap[i, :, :, :] = image
             labels_mmap[i, :, :] = label
@@ -185,26 +186,6 @@ class DataAccessHelper(object):
             return test_seq_names
         else:
             return self.val_set_info.tolist()
-
-
-    def testdev_sequence_list(self):
-        if self.image_set == '2016':
-            return None
-        else:
-            return self.testdev_set_info.tolist()
-
-    def get_sequences(self,set):
-        if set == 'trainval':
-            return self.train_sequence_list()+self.test_sequence_list()
-        elif set == 'test-dev':
-            return  self.testdev_sequence_list()
-        elif set == 'val':
-            return self.test_sequence_list()
-        elif set == 'train':
-            return self.train_sequence_list()
-        else:
-            print('unknown set :{}'.format(set))
-            raise
 
         
     def image_path(self,sequence_name,frame_no):
@@ -247,29 +228,17 @@ class DataAccessHelper(object):
         return self.db.name_idx_dict[seq]['im_info']
 
     def read_image(self, image_path):
-        if self.loaded:
-            seq,frame_no = self.split_path(image_path)
-            idx = self.get_cached_idx(seq,frame_no)
-            im_shape = self.get_orig_size(seq)
+        seq,frame_no = self.split_path(image_path)
+        idx = self.get_cached_idx(seq,frame_no)
 
-            return self.db.images[idx,:im_shape[0],:im_shape[1],:]
-        else:
-            print("using non cached :{}".format(image_path))
-            return  self.read_image_disk(image_path)
+        return self.db.images[idx,:,:,:]
 
-    def read_label(self,label_path, object_id = None):
-        if self.loaded:
-            assert (object_id is not None) and (object_id >0), "expected object id > 0"
-            seq, frame_no = self.split_path(label_path)
-            idx = self.get_cached_idx(seq, frame_no)
-            im_shape = self.get_orig_size(seq)
+    def read_label(self,label_path):
+        seq, frame_no = self.split_path(label_path)
+        idx = self.get_cached_idx(seq, frame_no)
 
-            label = (self.db.labels[idx, :im_shape[0], :im_shape[1]] == object_id)
-            return label
-        else:
-            print("using non cached :{}".format(label_path))
-            label = (self.read_label_disk(label_path) == object_id)
-            return label
+        label = (self.db.labels[idx, :, :] == 255)
+        return label
 
         
     def read_image_disk(self, image_path):
@@ -285,16 +254,17 @@ class DataAccessHelper(object):
     def read_label_disk(self,label_path):
         
         full_path = self.__fullpath(label_path)
-        image = Image.open(full_path)
-        image = np.array(image)
+        image =  skimage.img_as_ubyte(io.imread(full_path, as_grey=True))
 
         return image
     
     def num_objects(self,sequence_name):
         label_path = self.label_path(sequence_name, 0)
 
-
-        annotation = self.read_label_disk(label_path)
+        if self.loaded:
+            annotation = self.read_label_disk(label_path)
+        else:
+            annotation = self.read_label(label_path)
             
         return np.max(annotation)
         
@@ -347,10 +317,10 @@ class DataAccessHelper(object):
         diffmap[diffmap==0]=1
         return diffmap
 
-    def get_input_ch7_gt_mask(self,seq,frame_no,obj_id,prev_frame_no_calculator):
+    def get_input_ch7_gt_mask(self,seq,frame_no,prev_frame_no_calculator):
         prev_frame_no = prev_frame_no_calculator(frame_no)
         prev_mask_path = self.label_path(seq, prev_frame_no)
-        prev_mask = np.uint8(self.read_label(prev_mask_path,obj_id)*255)
+        prev_mask = np.uint8(self.read_label(prev_mask_path)*255)
         return self.get_input_ch7_with_mask(seq,frame_no,prev_mask,prev_frame_no_calculator)
 
     def get_input_ch7_with_mask(self,seq,frame_no,prev_mask,prev_frame_no_calculator):

@@ -9,6 +9,9 @@ from skimage import io,transform,morphology
 import numpy as np
 import re
 import yaml
+from PIL import Image
+import skimage
+
 class DataAccessHelper(object):
     '''
     Helper class that provides convenient methods to access data from 
@@ -160,7 +163,18 @@ class DataAccessHelper(object):
     
 if __name__ == '__main__':
     helper = DataAccessHelper()  
-    img_path = helper.image_path("blackswan", 1)
-    img = helper.read_image(img_path,[480,854])
-    print(img.shape)
+    img_path = helper.label_path("bear", 76)
+    full_path = os.path.join(helper.base_dir, img_path)
+    image = Image.open(full_path)
+    image = np.array(image)
+    #diff = image[:,:,0] - image[:,:,1]
+    image_io = skimage.img_as_ubyte(io.imread(full_path, as_grey=True))
+    print(np.unique(image_io))
+    print(np.unique(image[:,:,0]))
+    print(np.unique(image[:,:,1]))
+
+
+    print(np.unique(diff))
+    #img = helper.read_image(img_path,[480,854])
+    #print(img.shape)
     

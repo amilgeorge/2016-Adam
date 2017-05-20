@@ -7,16 +7,19 @@ Created on Dec 1, 2016
 import os
 import tensorflow as tf
 from net.refinenet import RefineNet
-from skimage import io,transform
+from skimage import io,transform,morphology
 #from dataprovider import sampleinputprovider
-from dataprovider import imgprovider
+from dataprovider import inputhelper
+from dataprovider.preprocess import vgg_preprocess
+from dataprovider import frame_no_calculator as fnc
+
 
 from dataprovider.davis import DataAccessHelper
 from common.logger import getLogger
 import skimage
 import re
 from net import segnet2 as segnet
-from dataprovider.finetuneinputprovider import FineTuneDataProvider
+#from dataprovider.finetuneinputprovider import FineTuneDataProvider
 from common.diskutils import ensure_dir
 import numpy as np
 
@@ -65,12 +68,13 @@ TESTPARAMS41 = ('exp/segnetvggwithskip-wl-distosvos-O5-1/iters-45000',5)
 TESTPARAMS47 = ('exp/segnet480pvgg-wl-dp2-osvos-O1-1/iters-45000',1)
 TESTPARAMS48 = ('exp/segnet480pvgg-wl-dp2-osvos-lr001-O1-1/iters-30000',1)
 TESTPARAMS49 = ('exp/segnet480pvgg-wl-dp2-osvos-val-O0-3/iters-45000',0)
+TESTPARAMS50 = ('exp/segnet480pvgg-d2017-wl-O1-mo2/iters-45000',1)
 
 
 
 CHECKPOINT = None
 OFFSET  = None
-
+DILATE_SZ = 0
 learn_changes_mode = False
 use_gt_prev_mask = False
 
@@ -88,8 +92,8 @@ IMAGE_HEIGHT = 480
 IMAGE_WIDTH = 854
 
 
-def prev_mask_path(out_dir,seq_name, frame_no, offset):
-    prev_frame_no = max(0,frame_no - offset)
+def prev_mask_path(out_dir,seq_name, frame_no, pfc):
+    prev_frame_no = pfc(frame_no)
     return mask_path(out_dir,seq_name,prev_frame_no)
 
 def mask_path(out_dir,seq_name, frame_no):
@@ -153,7 +157,7 @@ def build_test_model():
                }
     return ret_val
     
-def test_sequence(session,net,sequence_name,out_dir,keep_size = True, offset = OFFSET):
+def test_sequence(session,net,sequence_name,out_dir, pfc):
 
     mask_out_dir = os.path.join(out_dir,'480p')
     prob_map_dir = os.path.join(out_dir,'prob_maps')
@@ -166,23 +170,35 @@ def test_sequence(session,net,sequence_name,out_dir,keep_size = True, offset = O
     for frame_no in range(min(frames)+1,max(frames)+1):
         #Prepare input
         image_path = davis.image_path(sequence_name, frame_no)
+        prev_frame_no = pfc(frame_no)
+        prev_image_path = davis.image_path(sequence_name, prev_frame_no)
+
+        img = davis.read_image(image_path)
+        prev_img = davis.read_image(prev_image_path)
 
         if use_gt_prev_mask:
-            prev_label_path = davis.construct_label_path(image_path, -1 * offset)
+            prev_label_path = davis.label_path(sequence_name, prev_frame_no)
             prev_mask = davis.read_label(prev_label_path, [IMAGE_HEIGHT, IMAGE_WIDTH]) * 255
         else:
-            if offset ==0:
-                prev_label_path = prev_mask_path(mask_out_dir, sequence_name, 0 , 0)
-            else:
-                prev_label_path = prev_mask_path(mask_out_dir, sequence_name, frame_no , offset)
+            prev_label_path = prev_mask_path(mask_out_dir, sequence_name, frame_no , pfc)
+
             print("using prev mask {} for frame {}".format(prev_label_path,frame_no))
             prev_mask = read_label(prev_label_path, [IMAGE_HEIGHT, IMAGE_WIDTH])
             prev_mask = threshold_image(prev_mask)
             assert np.logical_or((prev_mask == 1), (prev_mask == 0)).all(), "expected 0 or 1 in binary mask"
             prev_mask = prev_mask * 255
+            if DILATE_SZ > 0:
+                print("dilating")
+                prev_mask = morphology.dilation(prev_mask, np.ones([DILATE_SZ, DILATE_SZ]))
+            #print("dilating")
+            #prev_mask = morphology.dilation(prev_mask, np.ones([10, 10]))
+            assert np.logical_or((prev_mask == 255), (prev_mask == 0)).all(), "expected 0 or 255 in binary mask"
 
-        inp_img = imgprovider.prepare_input_ch7(image_path, prev_mask,offset = -1*offset)
-        
+
+        inp_img = inputhelper.prepare_input_img_uint8(img, prev_mask, prev_img)
+        inputhelper.verify_input_img(inp_img[0,:,:,:])
+        inp_img = vgg_preprocess(inp_img)
+
         # Run model
         #prediction = net.im_predict(session,inp_img)
         inp = net['inp_pl']
@@ -209,22 +225,16 @@ def test_sequence(session,net,sequence_name,out_dir,keep_size = True, offset = O
         
 
         
-        if keep_size:
-            img_shape = davis.image_shape(image_path)[0:2]
-            print(img_shape)
-            print(pred_mask.shape,pred_mask.dtype)
-            pred_mask = transform.resize(pred_mask, img_shape)
-        
         save_image(mask_out_dir, sequence_name, frame_no, skimage.img_as_ubyte(pred_mask))
 
-def test_network(sess,net,out_dir,offset = OFFSET):
+def test_network(sess,net,out_dir,pfc):
     test_sequences = davis.test_sequence_list() + davis.train_sequence_list()
     for seq in test_sequences:
         logger.info('Testing sequence: {}'.format(seq))
-        test_sequence(sess, net, seq, out_dir, offset = offset)
+        test_sequence(sess, net, seq, out_dir, pfc)
 
 
-def test_net(sequences,out_dir,offset = None):
+def test_net(sequences,out_dir,pfc):
     #if sequences == None:
     #    sequences=[name for name in os.listdir(inp_dir) if os.path.isdir(name)]
     
@@ -236,7 +246,7 @@ def test_net(sequences,out_dir,offset = None):
         
         for seq in sequences:
             logger.info('Testing sequence: {}'.format(seq))
-            test_sequence(sess, net, seq,out_dir, offset = offset)
+            test_sequence(sess, net, seq,out_dir, pfc)
 
 def run_train_loop(seq,session,net,dp,ops,summary_writer,max_iters = 1000):
     step = 0
@@ -352,11 +362,13 @@ if __name__ == '__main__':
     #global CHECKPOINT
     #global OFFSET
 
-    test_points = [TESTPARAMS49]
+    test_points = [TESTPARAMS50]
 
     for tp in test_points:
         CHECKPOINT = tp[0]
         OFFSET = tp[1]
+
+        pfc = fnc.get(fnc.POLICY_OFFSET,OFFSET)
 
         test_sequences = davis.test_sequence_list()+davis.train_sequence_list()
         #test_sequences = ['paragliding-launch']
@@ -371,8 +383,8 @@ if __name__ == '__main__':
 
         res_dir = res_dir+'-O{}'.format(OFFSET)
 
-        res_dir = res_dir +"-1"
+        res_dir = res_dir +"-d10-1"
 
         out_dir = "../Results/{}".format(res_dir)
         logger.info("Output to: {}".format(out_dir))
-        test_net(test_sequences, out_dir=out_dir,offset=OFFSET)
+        test_net(test_sequences, out_dir=out_dir,pfc=pfc)

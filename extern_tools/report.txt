@@ -1,0 +1,239 @@
+--------------------------------------------------------------------------------
+Processing file '../net/segnet2.py'
+ outputting to '../net/segnet2_upgrade.py'
+--------------------------------------------------------------------------------
+
+'../net/segnet2.py' Line 800
+--------------------------------------------------------------------------------
+
+Added keyword 'concat_dim' to reordered function 'tf.concat'
+Added keyword 'values' to reordered function 'tf.concat'
+
+    Old:     concat_3 = tf.concat(3, [upsample3, conv3_3], name='concat3')
+                                                                           
+    New:     concat_3 = tf.concat(axis=3, values=[upsample3, conv3_3], name='concat3')
+                                  ~~~~~   ~~~~~~~                                      
+
+'../net/segnet2.py' Line 66
+--------------------------------------------------------------------------------
+
+Renamed function 'tf.histogram_summary' to 'tf.summary.histogram'
+
+    Old:   tf.histogram_summary(tensor_name + '/activations', x)
+           ~~~~~~~~~~~~~~~~~~~~                                  
+    New:   tf.summary.histogram(tensor_name + '/activations', x)
+           ~~~~~~~~~~~~~~~~~~~~                                  
+
+'../net/segnet2.py' Line 67
+--------------------------------------------------------------------------------
+
+Renamed function 'tf.scalar_summary' to 'tf.summary.scalar'
+
+    Old:   tf.scalar_summary(tensor_name + '/sparsity', tf.nn.zero_fraction(x))
+           ~~~~~~~~~~~~~~~~~                                                    
+    New:   tf.summary.scalar(tensor_name + '/sparsity', tf.nn.zero_fraction(x))
+           ~~~~~~~~~~~~~~~~~                                                    
+
+'../net/segnet2.py' Line 196
+--------------------------------------------------------------------------------
+
+Added keyword 'logits' to reordered function 'tf.nn.sparse_softmax_cross_entropy_with_logits'
+Added keyword 'labels' to reordered function 'tf.nn.sparse_softmax_cross_entropy_with_logits'
+
+    Old:       logits, labels, name='cross_entropy_per_example')
+                                                                 
+    New:       logits=logits, labels=labels, name='cross_entropy_per_example')
+               ~~~~~~~        ~~~~~~~                                          
+
+'../net/segnet2.py' Line 775
+--------------------------------------------------------------------------------
+
+Added keyword 'concat_dim' to reordered function 'tf.concat'
+Added keyword 'values' to reordered function 'tf.concat'
+
+    Old:     concat_5 = tf.concat(3, [upsample5, conv5_3], name='concat5')
+                                                                           
+    New:     concat_5 = tf.concat(axis=3, values=[upsample5, conv5_3], name='concat5')
+                                  ~~~~~   ~~~~~~~                                      
+
+'../net/segnet2.py' Line 588
+--------------------------------------------------------------------------------
+
+Added keyword 'concat_dim' to reordered function 'tf.concat'
+Added keyword 'values' to reordered function 'tf.concat'
+
+    Old:     concat_5 = tf.concat( [upsample5, conv5_3],3, name='concat5')
+                                                                           
+    New:     concat_5 = tf.concat( axis=[upsample5, conv5_3],values=3, name='concat5')
+                                   ~~~~~                     ~~~~~~~                   
+
+'../net/segnet2.py' Line 955
+--------------------------------------------------------------------------------
+
+Renamed function 'tf.histogram_summary' to 'tf.summary.histogram'
+
+    Old:             tf.histogram_summary(var.op.name + '/gradients', grad)
+                     ~~~~~~~~~~~~~~~~~~~~                                   
+    New:             tf.summary.histogram(var.op.name + '/gradients', grad)
+                     ~~~~~~~~~~~~~~~~~~~~                                   
+
+'../net/segnet2.py' Line 786
+--------------------------------------------------------------------------------
+
+Added keyword 'concat_dim' to reordered function 'tf.concat'
+Added keyword 'values' to reordered function 'tf.concat'
+
+    Old:     concat_4 = tf.concat(3, [upsample4, conv4_3], name='concat4')
+                                                                           
+    New:     concat_4 = tf.concat(axis=3, values=[upsample4, conv4_3], name='concat4')
+                                  ~~~~~   ~~~~~~~                                      
+
+'../net/segnet2.py' Line 598
+--------------------------------------------------------------------------------
+
+Added keyword 'concat_dim' to reordered function 'tf.concat'
+Added keyword 'values' to reordered function 'tf.concat'
+
+    Old:     concat_4 = tf.concat([upsample4, conv4_3],3, name='concat4')
+                                                                          
+    New:     concat_4 = tf.concat(axis=[upsample4, conv4_3],values=3, name='concat4')
+                                  ~~~~~                     ~~~~~~~                   
+
+'../net/segnet2.py' Line 89
+--------------------------------------------------------------------------------
+
+Renamed function 'tf.scalar_summary' to 'tf.summary.scalar'
+
+    Old:     tf.scalar_summary(l.op.name +' (raw)', l)
+             ~~~~~~~~~~~~~~~~~                         
+    New:     tf.summary.scalar(l.op.name +' (raw)', l)
+             ~~~~~~~~~~~~~~~~~                         
+
+'../net/segnet2.py' Line 90
+--------------------------------------------------------------------------------
+
+Renamed function 'tf.scalar_summary' to 'tf.summary.scalar'
+
+    Old:     tf.scalar_summary(l.op.name, loss_averages.average(l))
+             ~~~~~~~~~~~~~~~~~                                      
+    New:     tf.summary.scalar(l.op.name, loss_averages.average(l))
+             ~~~~~~~~~~~~~~~~~                                      
+
+'../net/segnet2.py' Line 672
+--------------------------------------------------------------------------------
+
+Added keyword 'concat_dim' to reordered function 'tf.concat'
+Added keyword 'values' to reordered function 'tf.concat'
+
+    Old:         net = tf.concat(3, [branch1, branch2], name='merged_b1_b2')
+                                                                             
+    New:         net = tf.concat(axis=3, values=[branch1, branch2], name='merged_b1_b2')
+                                 ~~~~~   ~~~~~~~                                         
+
+'../net/segnet2.py' Line 611
+--------------------------------------------------------------------------------
+
+Added keyword 'concat_dim' to reordered function 'tf.concat'
+Added keyword 'values' to reordered function 'tf.concat'
+
+    Old:     concat_3 = tf.concat([upsample3, conv3_3],3, name='concat3')
+                                                                          
+    New:     concat_3 = tf.concat(axis=[upsample3, conv3_3],values=3, name='concat3')
+                                  ~~~~~                     ~~~~~~~                   
+
+'../net/segnet2.py' Line 231
+--------------------------------------------------------------------------------
+
+Renamed function 'tf.mul' to 'tf.multiply'
+Renamed keyword argument from 'reduction_indices' to 'axis'
+
+    Old:         cross_entropy = -tf.reduce_sum(tf.mul(labels * tf.log(softmax + epsilon), head), reduction_indices=[1])
+                                                ~~~~~~                                            ~~~~~~~~~~~~~~~~~~     
+    New:         cross_entropy = -tf.reduce_sum(tf.multiply(labels * tf.log(softmax + epsilon), head), axis=[1])
+                                                ~~~~~~~~~~~                                            ~~~~~     
+
+'../net/segnet2.py' Line 168
+--------------------------------------------------------------------------------
+
+Renamed function 'tf.pack' to 'tf.stack'
+
+    Old:     t_new = tf.transpose(tf.reshape(tf.pack([b,y,x,c]), (4, N)))
+                                             ~~~~~~~                      
+    New:     t_new = tf.transpose(tf.reshape(tf.stack([b,y,x,c]), (4, N)))
+                                             ~~~~~~~~                      
+
+'../net/segnet2.py' Line 814
+--------------------------------------------------------------------------------
+
+Added keyword 'concat_dim' to reordered function 'tf.concat'
+Added keyword 'values' to reordered function 'tf.concat'
+
+    Old:     concat_2 = tf.concat(3, [upsample2, conv2_2], name='concat2')
+                                                                           
+    New:     concat_2 = tf.concat(axis=3, values=[upsample2, conv2_2], name='concat2')
+                                  ~~~~~   ~~~~~~~                                      
+
+'../net/segnet2.py' Line 624
+--------------------------------------------------------------------------------
+
+Added keyword 'concat_dim' to reordered function 'tf.concat'
+Added keyword 'values' to reordered function 'tf.concat'
+
+    Old:     concat_2 = tf.concat([upsample2, conv2_2],3, name='concat2')
+                                                                          
+    New:     concat_2 = tf.concat(axis=[upsample2, conv2_2],values=3, name='concat2')
+                                  ~~~~~                     ~~~~~~~                   
+
+'../net/segnet2.py' Line 950
+--------------------------------------------------------------------------------
+
+Renamed function 'tf.histogram_summary' to 'tf.summary.histogram'
+
+    Old:         tf.histogram_summary(var.op.name, var)
+                 ~~~~~~~~~~~~~~~~~~~~                   
+    New:         tf.summary.histogram(var.op.name, var)
+                 ~~~~~~~~~~~~~~~~~~~~                   
+
+'../net/segnet2.py' Line 823
+--------------------------------------------------------------------------------
+
+Added keyword 'concat_dim' to reordered function 'tf.concat'
+Added keyword 'values' to reordered function 'tf.concat'
+
+    Old:     concat_1 = tf.concat(3, [upsample1, conv1_2], name='concat1')
+                                                                           
+    New:     concat_1 = tf.concat(axis=3, values=[upsample1, conv1_2], name='concat1')
+                                  ~~~~~   ~~~~~~~                                      
+
+'../net/segnet2.py' Line 635
+--------------------------------------------------------------------------------
+
+Added keyword 'concat_dim' to reordered function 'tf.concat'
+Added keyword 'values' to reordered function 'tf.concat'
+
+    Old:     concat_1 = tf.concat([upsample1, conv1_2],3, name='concat1')
+                                                                          
+    New:     concat_1 = tf.concat(axis=[upsample1, conv1_2],values=3, name='concat1')
+                                  ~~~~~                     ~~~~~~~                   
+
+'../net/segnet2.py' Line 700
+--------------------------------------------------------------------------------
+
+Renamed function 'tf.all_variables' to 'tf.global_variables'
+
+    Old:     all_vars = tf.all_variables()
+                        ~~~~~~~~~~~~~~~~   
+    New:     all_vars = tf.global_variables()
+                        ~~~~~~~~~~~~~~~~~~~   
+
+'../net/segnet2.py' Line 125
+--------------------------------------------------------------------------------
+
+Renamed function 'tf.mul' to 'tf.multiply'
+
+    Old:         weight_decay = tf.mul(tf.nn.l2_loss(var), wd, name='weight_loss')
+                                ~~~~~~                                             
+    New:         weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')
+                                ~~~~~~~~~~~                                             
+
+

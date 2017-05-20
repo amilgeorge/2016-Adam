@@ -40,9 +40,6 @@ def get_mulmat(logits_flat, labels_flat, dist_map_flat):
 
     # select hard negatives
     neg_locs = 1 - labels_flat
-    print("AAAAaAAAAAAA")
-    print(neg_locs)
-    print(prob_map)
     only_neg_maps = tf.multiply(prob_map, tf.cast(neg_locs,tf.float32))
     BG_THRESHOLD = .3
     hard_neg_indices = tf.where(only_neg_maps > BG_THRESHOLD)

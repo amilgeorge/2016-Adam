@@ -256,8 +256,8 @@ class ImageRandomTransformer(object):
         tform = transform.AffineTransform(scale=transform_params.scale_factor,rotation=transform_params.rotation,
                                   shear=transform_params.shear,translation=t)
         
-        warped = transform.warp(image,tform.inverse)
-     
+        warped = transform.warp(image,tform.inverse,order=0)
+
        
         return warped
             

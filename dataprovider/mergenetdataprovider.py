@@ -247,7 +247,7 @@ class InputProvider:
             ERODE = 'Erode'
             DILATE = 'Dilate'
             NONE_ = 'None'
-            options = [ERODE,DILATE,NONE_]
+            options = [DILATE,NONE_]
             #options = [NONE_]
             ch = random.choice(options)
             if ch == ERODE:
@@ -256,7 +256,7 @@ class InputProvider:
                 return new_mask
             elif ch == DILATE:
 
-                sz = random.randint(2,4)
+                sz = random.randint(2,10)
                 new_mask = morphology.dilation(prev_mask,np.ones([sz,sz]))
                 return new_mask
             else :

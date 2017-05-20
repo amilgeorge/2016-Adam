@@ -1,5 +1,5 @@
 import os
-from dataprovider.davis import DataAccessHelper
+from dataprovider.davis_cached_2016 import DataAccessHelper
 import numpy as np
 import matplotlib.pyplot as plt
 from common.logger import getLogger
@@ -66,55 +66,71 @@ def save_image(out_dir,sequence_name,frame_no,img):
     out_path = os.path.join(out_seq_dir,'{0:05}.png'.format(frame_no))
     io.imsave(out_path, img)
 
-def agg_seq(src_dirs,sequence_name,out_dir):
+
+def mask_path(out_dir,seq_name, frame_no):
+    label_path = os.path.join(out_dir,seq_name, '{0:05}.png'.format(frame_no))
+    return label_path
+
+def read_label(label_path):
+    image = io.imread(label_path, as_grey=True)
+    return image
+
+def upper_bound_seq(src_dirs,sequence_name,out_dir):
     # Mask output dir
     mask_out_dir = os.path.join(out_dir, '480p')
     agg_vis_dir = os.path.join(out_dir, 'agg-vis',sequence_name)
 
+
     frames = davis.all_frames_nums(sequence_name)
     label_path = davis.label_path(sequence_name, min(frames))
-    prev_mask = davis.read_label(label_path, [IMAGE_HEIGHT, IMAGE_WIDTH]) * 255
+    prev_mask = davis.read_label(label_path) * 255
     save_image(mask_out_dir, sequence_name, min(frames), davis.read_label(label_path))
 
+
     for frame_no in range(min(frames) + 1, max(frames) + 1):
-        src_frames = []
+        print('computing seq:{} frame:{}'.format(sequence_name,frame_no))
+        all_matched = []
         image_path = davis.image_path(sequence_name, frame_no)
-        img = davis.read_image(image_path, [IMAGE_HEIGHT, IMAGE_WIDTH])
+        label_path = davis.label_path(sequence_name, frame_no)
+
+        img = davis.read_image(image_path)
+        gt_label = davis.read_label(label_path)
+
+        gt_binary = (gt_label > 0)
 
         for sd in src_dirs:
-            pfile = os.path.join(sd,sequence_name,'{0:05}.npy'.format(frame_no))
-            pmap = np.load(pfile)
-            src_frames.append(pmap)
+            out_label_path = mask_path(sd,sequence_name,frame_no)
+            out_label = read_label(out_label_path)
+            out_binary = out_label > 0
+            matched_binary  = np.logical_not(np.logical_xor(gt_binary,out_binary))
+            all_matched.append(matched_binary)
 
-        mean_frame = np.mean(np.dstack(src_frames),axis=2)
-        save_agg_vis_frame(agg_vis_dir, sequence_name, frame_no, src_dirs,
-                           src_frames, mean_frame, img)
-
-        pred_mask = threshold_image(mean_frame)
-        img_shape = davis.image_shape(image_path)[0:2]
-        pred_mask = transform.resize(pred_mask, img_shape)
-        save_image(mask_out_dir, sequence_name, frame_no, skimage.img_as_ubyte(pred_mask))
-
+        matched_any = np.any(np.dstack(all_matched),axis=2)
+        mask_binary = np.select([matched_any,np.logical_not(matched_any)],[gt_binary,np.logical_not(gt_binary)])
+        pred  = skimage.img_as_ubyte(mask_binary)*255
+        #print(np.unique(pred))
+        save_image(mask_out_dir, sequence_name, frame_no, pred)
 
 
 
-def aggregate_sequences(src_dirs,out_dir):
+
+def process_sequences(src_dirs,out_dir):
     test_sequences = davis.test_sequence_list()+davis.train_sequence_list()
 
     for seq in test_sequences:
         logger.info('aggregating results for sequence: {}'.format(seq))
-        agg_seq(src_dirs,seq,out_dir)
+        upper_bound_seq(src_dirs,seq,out_dir)
 
 if __name__ == '__main__':
 
-    out_dir = 'agg_half2-O1O5O10'
+    out_dir = 'upperbound_O0-4-O1-3-iter45000'
     out_dir = os.path.join('../Results',out_dir)
-    src_dirs =['segnetvggwithskip-half2-wl-osvos-O1-1-1',
-                  'segnetvggwithskip-half2-wl-osvos-O5-1-O5-1',
-                  'segnetvggwithskip-half2-wl-osvos-O10-1-O10-1']
+    src_dirs =['segnet480pvgg-wl-dp2-osvos-val-O0-4/iter-45000',
+                  'segnet480pvgg-wl-dp2-osvos-val-O1-3/iter-45000',
+                  ]
 
-    src_dirs = [os.path.join('../Results',sd,'prob_maps') for sd in src_dirs]
-    aggregate_sequences(src_dirs,out_dir)
+    src_dirs = [os.path.join('test_out',sd,'480p') for sd in src_dirs]
+    process_sequences(src_dirs,out_dir)
 
 
 

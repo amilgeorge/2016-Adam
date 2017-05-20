@@ -76,27 +76,31 @@ def get_plot_data_for_iter(result_file):
 
     return train_j_M,test_j_M,train_j_D,test_j_D
 
-def prepare_plot_data(test_out_dir):
+def prepare_plot_data(test_out_dir,iter_list = range(1000,46000,1000)):
     x_values = []
     train_j_M_values = []
     test_j_M_values = []
     train_j_D_values = []
     test_j_D_values = []
 
-    for i in range(1,46):
-        iter_no = i*1000
+    for i in iter_list:
+        iter_no = i
         result_file = osp.join(test_out_dir, "iter-{}".format(iter_no), '480p.h5')
-        print("preparing data for iter :",iter_no)
-        plot_data  = get_plot_data_for_iter(result_file)
-        if plot_data == None:
-            continue
+        try:
+            print("preparing data for iter :",iter_no)
+            plot_data  = get_plot_data_for_iter(result_file)
+            if plot_data == None:
+                continue
 
-        train_j_M, test_j_M, train_j_D, test_j_D = plot_data[0],plot_data[1],plot_data[2],plot_data[3]
-        train_j_M_values.append(train_j_M)
-        test_j_M_values.append(test_j_M)
-        train_j_D_values.append(train_j_D)
-        test_j_D_values.append(test_j_D)
-        x_values.append(iter_no)
+            train_j_M, test_j_M, train_j_D, test_j_D = plot_data[0],plot_data[1],plot_data[2],plot_data[3]
+            train_j_M_values.append(train_j_M)
+            test_j_M_values.append(test_j_M)
+            train_j_D_values.append(train_j_D)
+            test_j_D_values.append(test_j_D)
+            x_values.append(iter_no)
+        except:
+            os.remove(result_file)
+            print("removed file:{}".format(result_file))
 
     return  x_values,train_j_M_values,test_j_M_values,train_j_D_values,test_j_D_values
 
@@ -113,6 +117,11 @@ def plot_data(x_values,train_j_M_values,test_j_M_values,train_j_D_values,test_j_
     plt.legend()
     plt.tight_layout()
     plt.savefig(save_loc)
+
+def prepare_and_plot(test_out_dir,iter_list = range(1000,46000,1000)):
+    fig_path = osp.join(test_out_dir, 'plot.png')
+    x_values, train_j_M_values, test_j_M_values, train_j_D_values, test_j_D_values = prepare_plot_data(test_out_dir,iter_list)
+    plot_data(x_values, train_j_M_values, test_j_M_values, train_j_D_values, test_j_D_values, fig_path)
 
 if __name__ == '__main__':
     args = parse_args()

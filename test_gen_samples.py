@@ -23,7 +23,7 @@ from models import resnet_v1
 from net import segnet3 as segnet
 #from dataprovider.inputprovider import InputProvider
 #from dataprovider import imgprovider
-from dataprovider import mergenetdataprovider as inpprovider
+from dataprovider import imdbdataprovider as inpprovider
 from dataprovider.davis_cached import DataAccessHelper as DataAccessHelperCached
 
 from common import diskutils
@@ -36,10 +36,10 @@ slim = tf.contrib.slim
 
 
 if __name__ == '__main__':
-    davis = DataAccessHelperCached([480,854])
-    label_path = davis.label_path('blackswan', 0)
-    print (label_path)
-    print (davis.split_path(label_path))
+    #davis = DataAccessHelperCached([480,854])
+    #label_path = davis.label_path('blackswan', 0)
+    #print (label_path)
+    #print (davis.split_path(label_path))
     #prev_mask = davis.read_label(label_path, )*255
     #print(prev_mask.dtype)
 

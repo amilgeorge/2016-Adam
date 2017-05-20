@@ -7,8 +7,8 @@ Created on Dec 1, 2016
 from net.segnet2 import NUM_CLASSES
 import tensorflow as tf
 import numpy as np
-from dataprovider.sampleinputprovider import SampleInputProvider
-from dataprovider.imgprovider import InputProvider
+from dataprovider.imdbdataprovider import InputProvider
+from dataprovider import frame_no_calculator as fnc
 
 from common.logger import getLogger
 from common.diskutils import ensure_dir
@@ -16,18 +16,19 @@ from net import segnet2 as segnet
 import time
 import os
 import test_segnet2
+from dataprovider import imdb
 #import tracemalloc
 #import gc
 
 slim = tf.contrib.slim
 
-VGG_16 = 'vgg_16'
-RESNET_50 = 'resnet_v1_50'
-HEAD = RESNET_50
-TAIL = 'tail'
-OFFSETS = [0]#list(range(1,7))#[10]
-offset_string = "-".join(str(x) for x in OFFSETS)
-RUN_ID = "segnet480pvgg-wl-dp2-osvos-val-O{}-4".format(offset_string)
+
+OFFSETS = [(fnc.POLICY_OFFSET,1)]#list(range(1,7))#[10]
+#OFFSETS = [(fnc.POLICY_DEFAULT_ZERO,0)]
+offset_string = "-".join(str(x) for p,x in OFFSETS)
+dbname = imdb.IMDB_DAVIS_2016
+lr = 5e-6
+RUN_ID = "s480pvgg-{}-O{}-osvosold-reg1e-4-mo<1e-2>-de-1-t1".format(dbname,offset_string)
 
 CHECKPOINT = None#'exp/segnetvggwithskip-half-wl-osvos-O10-1/iters-45000'
 
@@ -58,6 +59,7 @@ if __name__ == '__main__':
 
     #tracemalloc.start()
 
+
     #gc.enable()
     #gc.set_debug(gc.DEBUG_LEAK)
 
@@ -67,6 +69,7 @@ if __name__ == '__main__':
 
     RNG_SEED = 3
     np.random.seed(RNG_SEED)
+    pfc = fnc.get(OFFSETS[0][0],OFFSETS[0][1])
 
     with tf.Graph().as_default():
         tf.set_random_seed(1)
@@ -107,12 +110,17 @@ if __name__ == '__main__':
         # Declare the optimizer
         global_step_var = tf.Variable(1, trainable=False)
             
-        learning_rate = tf.train.exponential_decay(0.01, global_step_var, 10,
-                                       0.1, staircase=True)
+        #learning_rate = tf.train.exponential_decay(0.01, global_step_var, 10,
+        #                               0.1, staircase=True)
+        #boundaries = [100000, 200000]
+        #values = [1e-2, 1e-3, 1e-4]
+        #learning_rate = tf.train.piecewise_constant(global_step_var, boundaries, values)
 
         with tf.control_dependencies([loss_averages_op]):
         #optimizer = tf.train.GradientDescentOptimizer(0.01)
             optimizer = tf.train.MomentumOptimizer(0.01,0.9)
+            #logger.info("using lr: {}".format(lr))
+            #optimizer = tf.train.AdamOptimizer(lr)
 
             gradients = optimizer.compute_gradients(loss)
             
@@ -121,12 +129,12 @@ if __name__ == '__main__':
             
         apply_gradient_op = optimizer.apply_gradients(gradients, global_step_var)
         #apply_gradient_op = segnet.train(loss, global_step_var)    
-        max_iters = 45000
+        max_iters = 500000
         batch_size = segnet.BATCH_SIZE
             
         # Input Provider
         #inputProvider = SampleInputProvider(resize=[IMG_HEIGHT,IMG_WIDTH],is_dummy=False)
-        inputProvider = InputProvider(offsets =OFFSETS , is_dummy=False,db_type =0)
+        inputProvider = InputProvider(db_name = dbname,prev_frame_calculator=pfc)
 
         #import pdb;
 
@@ -307,18 +315,17 @@ if __name__ == '__main__':
                     #pass
 
 
-                    if step % 1000 == 0:
+                    if step % 5000 == 0:
                         logger.info('Saving weights.')
                         saver.save(sess, os.path.join(EXP_DIR,'iters'),global_step = step)
                         logger.info('Flushing .')                        
                         train_summary_writer.flush()
                         test_summary_writer.flush()
 
-                    if step % 1000 == 0:
-                        perform_validation(sess,step,test_summary_writer)
+                    if step % 5000 == 0:
                         test_out_dir = os.path.join('test_out',RUN_ID,'iter-{}'.format(step))
                         ensure_dir(test_out_dir)
-                        test_segnet2.test_network(sess,net_dict,test_out_dir,OFFSETS[0])
+                        test_segnet2.test_network(sess,net_dict,test_out_dir,pfc)
                 
             train_summary_writer.close()
             test_summary_writer.close()

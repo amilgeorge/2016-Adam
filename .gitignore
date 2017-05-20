@@ -8,5 +8,5 @@ events/
 *.log
 *.prefs
 .idea/
-nohup*
+nohu*
 *.out
