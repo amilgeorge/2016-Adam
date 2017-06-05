@@ -168,21 +168,21 @@ if __name__ == '__main__':
         jaccard = tp_tensor/(tp_tensor + fn_tensor + fp_tensor)
 
         out_reshaped = tf.reshape(out,[-1,IMG_HEIGHT,IMG_WIDTH,NUM_CLASSES])
-        tf.image_summary('/output',tf.expand_dims(out_reshaped[:,:,:,1],3))
-        tf.image_summary('/label',tf.expand_dims(label,3))
+        tf.summary.image('/output',tf.expand_dims(out_reshaped[:,:,:,1],3))
+        tf.summary.image('/label',tf.expand_dims(label,3))
 
         for grad, var in gradients:
             if grad is not None:
-                tf.histogram_summary(var.op.name + '/gradients', grad)
+                tf.summary.histogram(var.op.name + '/gradients', grad)
                 
-        tf.scalar_summary('/loss', loss)
-        tf.scalar_summary('/accuracy',acc)
-        tf.scalar_summary('/precision',precision)
-        tf.scalar_summary('/recall',recall)
-        tf.scalar_summary('/jaccard',jaccard)
+        tf.summary.scalar('/loss', loss)
+        tf.summary.scalar('/accuracy',acc)
+        tf.summary.scalar('/precision',precision)
+        tf.summary.scalar('/recall',recall)
+        tf.summary.scalar('/jaccard',jaccard)
         #tf.scalar_summary('/regularization_loss', regularization_loss)
 
-        merged_summary = tf.merge_all_summaries()
+        merged_summary = tf.summary.merge_all()
         
         VALIDATION_SUMMARIES = 'validation_summaries'
         
@@ -193,14 +193,14 @@ if __name__ == '__main__':
         val_jaccard_pl = tf.placeholder(tf.float32)
 
 
-        val_loss_summary = tf.scalar_summary('/val/loss', val_loss_pl,collections=VALIDATION_SUMMARIES)
-        val_acc_summary = tf.scalar_summary('/val/accuracy', val_acc_pl,collections=VALIDATION_SUMMARIES)
-        val_precision_summary = tf.scalar_summary('/val/precision', val_precision_pl,collections=VALIDATION_SUMMARIES)
-        val_recall_summary = tf.scalar_summary('/val/recall', val_recall_pl ,collections=VALIDATION_SUMMARIES)
-        val_jaccard_summary = tf.scalar_summary('/val/jaccard', val_jaccard_pl ,collections=VALIDATION_SUMMARIES)
+        val_loss_summary = tf.summary.scalar('/val/loss', val_loss_pl,collections=VALIDATION_SUMMARIES)
+        val_acc_summary = tf.summary.scalar('/val/accuracy', val_acc_pl,collections=VALIDATION_SUMMARIES)
+        val_precision_summary = tf.summary.scalar('/val/precision', val_precision_pl,collections=VALIDATION_SUMMARIES)
+        val_recall_summary = tf.summary.scalar('/val/recall', val_recall_pl ,collections=VALIDATION_SUMMARIES)
+        val_jaccard_summary = tf.summary.scalar('/val/jaccard', val_jaccard_pl ,collections=VALIDATION_SUMMARIES)
 
 
-        merged_val_summary = tf.merge_summary([val_loss_summary,val_acc_summary,val_precision_summary,val_recall_summary,val_jaccard_summary ],
+        merged_val_summary = tf.summary.merge([val_loss_summary,val_acc_summary,val_precision_summary,val_recall_summary,val_jaccard_summary ],
                                               collections=None)
         ########################
         
@@ -270,15 +270,15 @@ if __name__ == '__main__':
 
             else :   
                 # Build an initialization operation to run below.
-                init = tf.initialize_all_variables()
+                init = tf.global_variables_initializer()
 
                 # Start running operations on the Graph.
                 sess.run(init)
 
                 segnet.initialize_resnet(sess)
 
-            train_summary_writer = tf.train.SummaryWriter(EVENTS_DIR + '/train', sess.graph)
-            test_summary_writer = tf.train.SummaryWriter(EVENTS_DIR + '/test')
+            train_summary_writer = tf.summary.FileWriter(EVENTS_DIR + '/train', sess.graph)
+            test_summary_writer = tf.summary.FileWriter(EVENTS_DIR + '/test')
 
             while global_step_var.eval() <= max_iters:
                 #logger.info('Executing step:{}'.format(step))

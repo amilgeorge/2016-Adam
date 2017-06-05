@@ -1,6 +1,8 @@
 log/
 checkpoints/
 exp/
+exp_osvos/
+exp_repo/
 test_out/
 events/
 .settings/

@@ -3,25 +3,23 @@ Created on Sep 26, 2016
 
 @author: george
 '''
+import  numpy as np
 
-import tensorflow as tf
-import numpy as np
-from skimage import io
-import os
-from main import build_model
+def get_deconv_filter(f_shape):
+  """
+    reference: https://github.com/MarvinTeichmann/tensorflow-fcn
+  """
+  width = f_shape[0]
+  heigh = f_shape[0]
+  f = np.ceil(width/2.0)
+  c = (2 * f - 1 - f % 2) / (2.0 * f)
+  bilinear = np.zeros([f_shape[0], f_shape[1]])
+  for x in range(width):
+      for y in range(heigh):
+          value = (1 - abs(x / f - c)) * (1 - abs(y / f - c))
+          bilinear[x, y] = value
+  weights = np.zeros(f_shape)
+  return bilinear
 
-
-import sys
-
-inp = tf.placeholder(tf.float32,shape=[None,224,224,4],name='input')
-#build_model(inp,"vgg16")
-#saver = tf.train.Saver()
-CheckpointReader = tf.train.NewCheckpointReader('checkpoints/resnet_v1_50.ckpt')
-map = CheckpointReader.get_variable_to_shape_map()
-with tf.Session() as sess:
-
-    #saver = tf.train.import_meta_graph('metagraph.meta')
-    #saver.restore(sess, 'exp/test1/epoch-26.ckpt')
-
-    print("adf")
-    #saver.restore(sess, 'exp/test1/epoch-26.ckpt')
+if __name__ == '__main__':
+    print(get_deconv_filter([4,4]))

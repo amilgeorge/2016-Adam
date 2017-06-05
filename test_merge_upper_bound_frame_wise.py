@@ -6,7 +6,7 @@ from common.logger import getLogger
 from skimage import io, transform
 import skimage
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from PIL import Image
+
 
 
 IMAGE_HEIGHT = 360
@@ -14,6 +14,28 @@ IMAGE_WIDTH = 480
 
 davis = DataAccessHelper()
 logger = getLogger()
+
+def db_eval_iou(annotation,segmentation):
+
+	""" Compute region similarity as the Jaccard Index.
+
+	Arguments:
+		annotation   (ndarray): binary annotation   map.
+		segmentation (ndarray): binary segmentation map.
+
+	Return:
+		jaccard (float): region similarity
+
+ """
+
+	annotation   = annotation.astype(np.bool)
+	segmentation = segmentation.astype(np.bool)
+
+	if np.isclose(np.sum(annotation),0) and np.isclose(np.sum(segmentation),0):
+		return 1
+	else:
+		return np.sum((annotation & segmentation)) / \
+				np.sum((annotation | segmentation),dtype=np.float32)
 
 def save_agg_vis_frame(out_seq_dir,seq_name,frame_no, src_dirs,src_frames,mean_frame,img):
     os.makedirs(out_seq_dir,exist_ok = True)
@@ -79,11 +101,6 @@ def upper_bound_seq(src_dirs,sequence_name,out_dir):
     # Mask output dir
     mask_out_dir = os.path.join(out_dir, '480p')
     agg_vis_dir = os.path.join(out_dir, 'agg-vis',sequence_name)
-    map_vis_dir = os.path.join(out_dir, 'map-vis',sequence_name)
-    os.makedirs(map_vis_dir, exist_ok=True)
-
-    palette_img = Image.open('/usr/stud/george/test.png')
-    palette = palette_img.getpalette()
 
 
     frames = davis.all_frames_nums(sequence_name)
@@ -94,7 +111,8 @@ def upper_bound_seq(src_dirs,sequence_name,out_dir):
 
     for frame_no in range(min(frames) + 1, max(frames) + 1):
         print('computing seq:{} frame:{}'.format(sequence_name,frame_no))
-        all_matched = []
+        out_binary_list = []
+        J_list = []
         image_path = davis.image_path(sequence_name, frame_no)
         label_path = davis.label_path(sequence_name, frame_no)
 
@@ -107,26 +125,14 @@ def upper_bound_seq(src_dirs,sequence_name,out_dir):
             out_label_path = mask_path(sd,sequence_name,frame_no)
             out_label = read_label(out_label_path)
             out_binary = out_label > 0
-            matched_binary  = np.logical_not(np.logical_xor(gt_binary,out_binary))
-            all_matched.append(matched_binary)
+            j = db_eval_iou(gt_binary,out_binary)
+            J_list.append(j)
+            out_binary_list.append(out_binary)
 
-        if len(src_dirs) == 2:
-            matched_0 = all_matched[0]
-            matched_1 = all_matched[1]
-            matched_all = np.all(np.dstack(all_matched),axis=2)
-            map = np.zeros(matched_0.shape,dtype=np.uint8)
-            map[matched_0] = 1
-            map[matched_1] = 2
-            map[matched_all] = 3
-            map_img = Image.fromarray(map,mode='P')
-            map_img.putpalette(palette)
-            map_path = os.path.join(map_vis_dir, '{0:05}.png'.format(frame_no))
-            map_img.save(map_path)
-
-
-
-        matched_any = np.any(np.dstack(all_matched),axis=2)
-        mask_binary = np.select([matched_any,np.logical_not(matched_any)],[gt_binary,np.logical_not(gt_binary)])
+        max_idx = np.argmax(J_list)
+        print(J_list)
+        print("Max index :{}",max_idx)
+        mask_binary = out_binary_list[max_idx]
         pred  = skimage.img_as_ubyte(mask_binary)*255
         #print(np.unique(pred))
         save_image(mask_out_dir, sequence_name, frame_no, pred)
@@ -143,7 +149,7 @@ def process_sequences(src_dirs,out_dir):
 
 if __name__ == '__main__':
 
-    out_dir = 'upperbound_osvos_and_mask-adam<1e-6>-iters500k-de-1'
+    out_dir = 'upperbound_framewise_osvos_and_mask-mo<1e-2>-iters500k-de-1'
     out_dir = os.path.join('../Results',out_dir)
     #src_dirs =['segnet480pvgg-wl-dp2-osvos-val-O0-4/iter-45000',
     #              'segnet480pvgg-wl-dp2-osvos-val-O1-3/iter-45000',
@@ -151,9 +157,8 @@ if __name__ == '__main__':
 
     #src_dirs = [os.path.join('test_out',sd,'480p') for sd in src_dirs]
     src_dirs = []
-    #src_dirs.append("/usr/stud/george/workspace/adam/test_out/s480pvgg-davis2016-O1-osvosold-reg1e-4-mo<1e-2>-de-1/iter-500000/480p")
-    src_dirs.append("/usr/stud/george/workspace/adam/test_out/s480pvgg-davis2016-O1-osvosold-reg1e-4-adam<1e-6>-de-1/iter-500000/480p")
-    src_dirs.append("/usr/stud/george/workspace/Results/OSVOS")
+    src_dirs.append("/usr/stud/george/workspace/adam/test_out/s480pvgg-davis2016-O1-osvosold-reg1e-4-mo<1e-2>-de-1/iter-500000/480p")
+    src_dirs.append("/work/george/DAVIS/Results/Segmentations/480p/OSVOS")
 
     process_sequences(src_dirs,out_dir)
 

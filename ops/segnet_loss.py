@@ -45,8 +45,8 @@ def get_mulmat(logits_flat, labels_flat, dist_map_flat):
     hard_neg_indices = tf.where(only_neg_maps > BG_THRESHOLD)
 
     #hard_neg_indices_mask = get_indicator_tensor(hard_neg_indices,tf.shape(labels_flat,out_type=tf.int64))
-    hard_neg_indices_mask = tf.select(only_neg_maps>BG_THRESHOLD,tf.ones_like(labels_flat),tf.zeros_like(labels_flat))
-    hard_neg_dist_mat = tf.mul(dist_map_flat,tf.cast(hard_neg_indices_mask,tf.float32))
+    hard_neg_indices_mask = tf.where(only_neg_maps>BG_THRESHOLD,tf.ones_like(labels_flat),tf.zeros_like(labels_flat))
+    hard_neg_dist_mat = tf.multiply(dist_map_flat,tf.cast(hard_neg_indices_mask,tf.float32))
 
     values, selected_neg_indices = tf.nn.top_k(tf.transpose(hard_neg_dist_mat), bg_count)
     #selected_neg_indices = tf.squeeze(selected_neg_indices)
@@ -56,7 +56,7 @@ def get_mulmat(logits_flat, labels_flat, dist_map_flat):
     selected_pos_indices = tf.cast(selected_pos_indices,tf.int32)
     #selected_pos_indices = tf.squeeze(selected_pos_indices)
 
-    selected_indices = tf.concat(0,[selected_pos_indices,selected_neg_indices])
+    selected_indices = tf.concat(axis=0,values=[selected_pos_indices,selected_neg_indices])
 
     #dense_selected_mask = get_indicator_tensor(selected_indices,labels_flat.get_shape())
     #dense_selected_mask = tf.zeros(tf.shape(labels_flat))
@@ -95,7 +95,7 @@ def get_ohem_loss(loss_flat, labels_flat):
 
     loss_n_neg, top_k_indices = tf.nn.top_k(tf.transpose(loss_n_neg), k=bg_count, sorted=False)
     loss_n_neg = tf.transpose(loss_n_neg)
-    selected_loss = tf.concat(0, (loss_n_pos, loss_n_neg))
+    selected_loss = tf.concat(axis=0, values=(loss_n_pos, loss_n_neg))
     print(selected_loss)
     selected_loss = tf.expand_dims(selected_loss,axis = 1)
     #print(selected_loss)
@@ -132,7 +132,7 @@ def dist_loss(logits, labels, dist_map=None):
         print (logits_flat)
         print(logits_flat.get_shape().ndims)
         print(label_flat.get_shape().ndims)
-        cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits_flat, tf.squeeze(label_flat), name='cross_entropy')
+        cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits_flat, labels=tf.squeeze(label_flat), name='cross_entropy')
         #cross_entropy = tf.gather(cross_entropy,mat)
         cross_entropy = get_ohem_loss(cross_entropy,label_flat)
 
@@ -167,10 +167,10 @@ def weighted_per_image_loss2(logits, labels, num_classes, weight_map=None):
 
 
     with tf.name_scope('loss'):
-        cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits, labels, name='cross_entropy')
+        cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels, name='cross_entropy')
 
         print(cross_entropy)
-        cross_entropy_mul = tf.mul(cross_entropy, weight_map, name='weighted_cross_entropy')
+        cross_entropy_mul = tf.multiply(cross_entropy, weight_map, name='weighted_cross_entropy')
         # cross_entropy = -tf.mul(tf.reduce_sum(labels * tf.log(softmax + epsilon), reduction_indices=[1]),weights_flat)
         print(cross_entropy_mul)
         cross_entropy_sum = tf.reduce_sum(cross_entropy_mul, reduction_indices=[1, 2], name='cross_entropy_sum')
@@ -219,7 +219,7 @@ def weighted_per_image_loss(logits, labels, num_classes, weight_map=None):
         tmp1 = tf.reduce_sum(labels * tf.log(softmax + epsilon), reduction_indices=[1])
         reshaped_tmp = tf.reshape(tmp1, (-1, 1))
 
-        cross_entropy = -tf.mul(reshaped_tmp, weights_flat)
+        cross_entropy = -tf.multiply(reshaped_tmp, weights_flat)
 
         # cross_entropy = -tf.mul(tf.reduce_sum(labels * tf.log(softmax + epsilon), reduction_indices=[1]),weights_flat)
 

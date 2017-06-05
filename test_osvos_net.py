@@ -13,7 +13,7 @@ from dataprovider import inputhelper
 from dataprovider.preprocess import vgg_preprocess
 from dataprovider import frame_no_calculator as fnc
 
-
+from net import osvos
 from dataprovider.davis import DataAccessHelper
 from common.logger import getLogger
 import skimage
@@ -81,7 +81,7 @@ use_gt_prev_mask = False
 SAVE_PREDICTIONS = False
 
 davis = DataAccessHelper()
-logger = getLogger() 
+logger = getLogger()
 
 RUN_ID = "f-segnet-ch7-aug-10"
 EVENTS_DIR = os.path.join('events',RUN_ID)#time.strftime("%Y%m%d-%H%M%S")
@@ -92,13 +92,9 @@ IMAGE_HEIGHT = 480
 IMAGE_WIDTH = 854
 
 
+
 def prev_mask_path(out_dir,seq_name, frame_no, pfc):
     prev_frame_no = pfc(frame_no)
-    return mask_path(out_dir,seq_name,prev_frame_no)
-
-def osvos_mask_path(seq_name, frame_no, pfc):
-    prev_frame_no = pfc(frame_no)
-
     return mask_path(out_dir,seq_name,prev_frame_no)
 
 def mask_path(out_dir,seq_name, frame_no):
@@ -130,22 +126,7 @@ def save_prediction(out_dir,sequence_name,frame_no,prediction):
     out_path = os.path.join(out_seq_dir, '{0:05}.npy'.format(frame_no))
     np.save(out_path, prediction)
 
-def build_model_for_fine_tuning():
-    inp = tf.placeholder(tf.float32,shape=[None,IMAGE_HEIGHT,IMAGE_WIDTH,7],name='input')
-    label =  tf.placeholder(tf.float32,shape=[None,IMAGE_HEIGHT,IMAGE_WIDTH],name='label')
-    is_training_pl = tf.placeholder(tf.bool,name="segnet_is_training")
-    loss,logit = segnet.inference_vgg16_withskip(inp, label, is_training_pl)
 
-    logit = tf.reshape(logit, (-1, segnet.NUM_CLASSES))
-    out = tf.reshape(tf.nn.softmax(logit),[-1,IMAGE_HEIGHT,IMAGE_WIDTH,segnet.NUM_CLASSES])
-    
-    ret_val = {"inp_pl":inp,
-               "label_pl":label,
-               "out" : out,
-               "is_training_pl":is_training_pl,
-               "loss":loss }
-    return ret_val
-    
 def build_test_model():
     inp = tf.placeholder(tf.float32,shape=[None,IMAGE_HEIGHT,IMAGE_WIDTH,7],name='input')
     is_training_pl = tf.placeholder(tf.bool,name="segnet_is_training")
@@ -161,12 +142,10 @@ def build_test_model():
                "is_training_pl":is_training_pl
                }
     return ret_val
-    
-def test_sequence(session,net,sequence_name,out_dir,pfc,prev_mask_dir=None):
+
+def test_sequence(session,net,sequence_name,out_dir, pfc):
 
     mask_out_dir = os.path.join(out_dir,'480p')
-    if prev_mask_dir is None:
-        prev_mask_dir = mask_out_dir
     prob_map_dir = os.path.join(out_dir,'prob_maps')
     frames = davis.all_frames_nums(sequence_name)
     label_path = davis.label_path(sequence_name, min(frames))
@@ -187,8 +166,7 @@ def test_sequence(session,net,sequence_name,out_dir,pfc,prev_mask_dir=None):
             prev_label_path = davis.label_path(sequence_name, prev_frame_no)
             prev_mask = davis.read_label(prev_label_path, [IMAGE_HEIGHT, IMAGE_WIDTH]) * 255
         else:
-
-            prev_label_path = prev_mask_path(prev_mask_dir, sequence_name, frame_no , pfc)
+            prev_label_path = prev_mask_path(mask_out_dir, sequence_name, frame_no , pfc)
 
             print("using prev mask {} for frame {}".format(prev_label_path,frame_no))
             prev_mask = read_label(prev_label_path, [IMAGE_HEIGHT, IMAGE_WIDTH])
@@ -204,168 +182,51 @@ def test_sequence(session,net,sequence_name,out_dir,pfc,prev_mask_dir=None):
 
 
         inp_img = inputhelper.prepare_input_img_uint8(img, prev_mask, prev_img)
-        inputhelper.verify_input_img(inp_img[0,:,:,:])
-        inp_img = vgg_preprocess(inp_img)
+        inputhelper.verify_input_img(inp_img[0, :, :, :])
+        inp_img = osvos.preprocess_img_ch7(inp_img)
 
         # Run model
-        #prediction = net.im_predict(session,inp_img)
         inp = net['inp_pl']
-        is_training_pl = net['is_training_pl']
-        #keep_prob = net['keep_prob']
         out = net['out']
-        result = session.run([out], 
-                             feed_dict={inp:inp_img,
-                             is_training_pl:False})
-        prediction = result[0][0,:,:,1]
+
+        result = session.run([out],
+                             feed_dict={inp:inp_img})
+        prediction = result[0][0,:,:,0]
 
         #print(result[0][0,1,1,1],result[0][0,1,1,0])
         if SAVE_PREDICTIONS:
             save_prediction(prob_map_dir, sequence_name, frame_no, prediction)
 
-        if(learn_changes_mode):
-            bin_prev_mask = prev_mask ==255
-            pred_changes =  threshold_image(prediction).astype(bool)
-            pred_mask = np.logical_xor(bin_prev_mask,pred_changes).astype(float)
 
-        else:
-            # Prepare mask for next iteration
-            pred_mask = threshold_image(prediction)
-        
+        #pred_mask = threshold_image(prediction)
+        pred_mask = prediction.astype(np.float32) > 162.0 / 255.0
 
-        
+
+
         save_image(mask_out_dir, sequence_name, frame_no, skimage.img_as_ubyte(pred_mask))
 
-def test_network(sess,net,out_dir,pfc,prev_mask_dir=None):
+def test_network(sess,net,out_dir,pfc):
     test_sequences = davis.test_sequence_list() + davis.train_sequence_list()
     for seq in test_sequences:
         logger.info('Testing sequence: {}'.format(seq))
-        test_sequence(sess, net, seq, out_dir, pfc,prev_mask_dir)
+        test_sequence(sess, net, seq, out_dir, pfc)
 
 
 def test_net(sequences,out_dir,pfc):
     #if sequences == None:
     #    sequences=[name for name in os.listdir(inp_dir) if os.path.isdir(name)]
-    
+
     net = build_test_model()
-    
+
     with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess:
         restorer2 = tf.train.Saver()
         restorer2.restore(sess,CHECKPOINT)
-        
+
         for seq in sequences:
             logger.info('Testing sequence: {}'.format(seq))
             test_sequence(sess, net, seq,out_dir, pfc)
 
-def run_train_loop(seq,session,net,dp,ops,summary_writer,max_iters = 1000):
-    step = 0
-    saver = tf.train.Saver(max_to_keep = 50)
-    exp_dir = os.path.join(EXP_DIR,seq)
-    ensure_dir(exp_dir)
-    ### ops ###
-    apply_gradient_op = ops['train_op']
-    merged_summary = ops['merged_summary']
-    merged_val_summary = ops['merged_val_summary'] 
-    val_loss_pl = ops['val_loss_pl'] 
-    ###########
-    loss = net['loss']
-    inp = net['inp_pl']
-    is_training_pl = net['is_training_pl']
-    label = net['label_pl']
-    
-    
-    
-    def perform_validation(session,step,summary_writer):
 
-        losses = []
-        val_data = dp.val_seq_batch_itr()
-        for i, sequence_batch in enumerate(val_data):
-            result = session.run([loss], 
-                                    feed_dict={inp:sequence_batch.images,
-                                    label:sequence_batch.labels,
-                                    is_training_pl:False})
-            loss_value = result[0]
-            losses.append(loss_value)
-            logger.info('val step:{}, iters:{}, loss :{} '.format(step, i, loss_value))
-            avg_loss = sum(losses)/len(losses)
-
-            feed = {val_loss_pl: avg_loss}
-            
-            val_summary = session.run([merged_val_summary],feed_dict = feed)
-            summary_writer.add_summary(val_summary[0],step)
-    
-    while step < max_iters:
-        sequence_batch = dp.get_next_minibatch()
-        result = session.run([apply_gradient_op, loss,merged_summary], 
-                                      feed_dict={inp:sequence_batch.images,
-                                                label:sequence_batch.labels,
-                                                is_training_pl:True})
-        summary_writer.add_summary(result[2], step )
-        loss_value = result[1]
-        logger.info('train iters:{} loss :{}'.format(step, loss_value))
-
-        if step % 50 == 0:
-            perform_validation(session,step,summary_writer)
-        
-        if step % 50 == 0:
-            logger.info('Saving weights.')
-            saver.save(session, os.path.join(exp_dir,'iters'),global_step = step)
-            logger.info('Flushing .')                        
-            summary_writer.flush()
-        
-        step = step+1
-        
-def fine_tune_net_for_seq(session,net,seq):
-    
-    logger.info('Starting Fine Tuning for :{}'.format(seq))
-    ### ###
-    events_dir = os.path.join(EVENTS_DIR,seq)
-    summary_writer = tf.summary.FileWriter(events_dir, session.graph)
-    #######
-    ### Data Provider ###
-    data_provider = FineTuneDataProvider(seq,16)
-    #####################
-    loss = net['loss']
-    ### Optimizer ###
-    optimizer = tf.train.GradientDescentOptimizer(0.001)          
-    gradients = optimizer.compute_gradients(loss)                               
-    apply_gradient_op = optimizer.apply_gradients(gradients)
-    #################
-    ### Summaries ### 
-    tf.summary.scalar('/train/loss', loss)  
-    val_loss_pl = tf.placeholder(tf.float32)
-    VALIDATION_SUMMARIES = 'validation_summaries'
-    val_loss_summary = tf.summary.scalar('/val/loss', val_loss_pl,collections=VALIDATION_SUMMARIES)  
-    merged_val_summary = tf.summary.merge([val_loss_summary],collections=None)   
-    merged_summary = tf.summary.merge_all()    
-    #################
-    
-    ### Collect Ops ###
-    ops = {}
-    ops['train_op'] = apply_gradient_op
-    ops['merged_summary'] = merged_summary
-    ops['merged_val_summary'] = merged_val_summary
-    ops['val_loss_pl'] = val_loss_pl
-    ####################
-    
-    run_train_loop(seq,session,net,data_provider,ops,summary_writer)
-    
-    logger.info('Completed Fine Tuning for :{}'.format(seq))
-
-    
-
-def test_net_fine_tune(sequences,out_dir):
-    for seq in sequences:
-        tf.reset_default_graph()
-        net = build_model_for_fine_tuning()
-    
-        with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess:
-            restorer2 = tf.train.Saver()
-            restorer2.restore(sess,CHECKPOINT)
-            
-            fine_tune_net_for_seq(sess, net, seq)
-            
-            test_sequence(sess, net, seq, out_dir)
-        
 if __name__ == '__main__':
     #global CHECKPOINT
     #global OFFSET

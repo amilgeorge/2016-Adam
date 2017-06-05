@@ -100,7 +100,7 @@ class CoarseNet(object):
         
     def __init_tail(self,session):
         varsTail = tf.get_collection(tf.GraphKeys.VARIABLES,scope = TAIL)
-        init_op = tf.initialize_variables(varsTail)
+        init_op = tf.variables_initializer(varsTail)
         session.run(init_op)
 
 

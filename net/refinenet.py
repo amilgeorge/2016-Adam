@@ -95,7 +95,7 @@ class RefineNet(object):
     
     def __init_refine(self,session):
         refine_vars = self.refine_variables()
-        init_op = tf.initialize_variables(refine_vars)
+        init_op = tf.variables_initializer(refine_vars)
         session.run(init_op)
         
     def __add_horizontal_units(self,i,inp_h):

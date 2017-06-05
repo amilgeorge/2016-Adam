@@ -307,7 +307,7 @@ def fine_tune_net_for_seq(session,net,seq):
     logger.info('Starting Fine Tuning for :{}'.format(seq))
     ### ###
     events_dir = os.path.join(EVENTS_DIR,seq)
-    summary_writer = tf.train.SummaryWriter(events_dir, session.graph)
+    summary_writer = tf.summary.FileWriter(events_dir, session.graph)
     #######
     ### Data Provider ###
     data_provider = FineTuneDataProvider(seq,16)
@@ -319,12 +319,12 @@ def fine_tune_net_for_seq(session,net,seq):
     apply_gradient_op = optimizer.apply_gradients(gradients)
     #################
     ### Summaries ### 
-    tf.scalar_summary('/train/loss', loss)  
+    tf.summary.scalar('/train/loss', loss)  
     val_loss_pl = tf.placeholder(tf.float32)
     VALIDATION_SUMMARIES = 'validation_summaries'
-    val_loss_summary = tf.scalar_summary('/val/loss', val_loss_pl,collections=VALIDATION_SUMMARIES)  
-    merged_val_summary = tf.merge_summary([val_loss_summary],collections=None)   
-    merged_summary = tf.merge_all_summaries()    
+    val_loss_summary = tf.summary.scalar('/val/loss', val_loss_pl,collections=VALIDATION_SUMMARIES)  
+    merged_val_summary = tf.summary.merge([val_loss_summary],collections=None)   
+    merged_summary = tf.summary.merge_all()    
     #################
     
     ### Collect Ops ###

@@ -23,15 +23,16 @@ from dataprovider import imdb
 slim = tf.contrib.slim
 
 
-OFFSETS = [(fnc.POLICY_OFFSET,1)]#list(range(1,7))#[10]
+OFFSETS = [(fnc.POLICY_OFFSET,1)]
 #OFFSETS = [(fnc.POLICY_DEFAULT_ZERO,0)]
 offset_string = "-".join(str(x) for p,x in OFFSETS)
-dbname = imdb.IMDB_DAVIS_COMBO
-lr = 5e-6
+dbname = imdb.IMDB_CUSTOM_MASK_DAVIS2016
+lr = 1e-2
 
-RUN_ID = "s480pvgg-{}-O{}-osvosold-reg1e-4-mo<1e-2>-de-scale1.3-3".format(dbname,offset_string)
+RUN_ID = "s480p-{}-O{}-osvosold-reg1e-4-mo<1e-2>-de-scale1.3-3".format(dbname,offset_string)
 
-CHECKPOINT = None#'exp/segnetvggwithskip-half-wl-osvos-O10-1/iters-45000'
+START_CHECKPOINT = "exp_repo/s480pvgg-daviscombo-O1-osvosold-reg1e-4-mo<1e-2>-de-scale1.3-3/iters-50000"
+START_MASK_FOLDER = "test_out/s480pvgg-daviscombo-O1-osvosold-reg1e-4-mo<1e-2>-de-scale1.3-3/iter-50000/480p"
 
 EVENTS_DIR = os.path.join('events',RUN_ID)#time.strftime("%Y%m%d-%H%M%S")
 EXP_DIR = os.path.join('exp',RUN_ID)
@@ -42,14 +43,10 @@ IMG_WIDTH = 854
 
 
     
-if __name__ == '__main__':
+def train():
 
-    #tracemalloc.start()
-
-
-    #gc.enable()
-    #gc.set_debug(gc.DEBUG_LEAK)
-    SAVE_STEP_SIZE = 10000
+    SAVE_STEP_SIZE = 3000
+    custom_mask_folder = START_MASK_FOLDER
 
     ensure_dir(EXP_DIR)
     ensure_dir(LOGS_DIR)        
@@ -106,7 +103,7 @@ if __name__ == '__main__':
 
         with tf.control_dependencies([loss_averages_op]):
         #optimizer = tf.train.GradientDescentOptimizer(0.01)
-            optimizer = tf.train.MomentumOptimizer(0.01,0.9)
+            optimizer = tf.train.MomentumOptimizer(lr,0.9)
             #logger.info("using lr: {}".format(lr))
             #optimizer = tf.train.AdamOptimizer(lr)
 
@@ -180,63 +177,17 @@ if __name__ == '__main__':
         ########################
         
         saver = tf.train.Saver(max_to_keep = 10)
-        #saver.export_meta_graph("metagraph.meta", as_text=True)    
-        def perform_validation(session,step,summary_writer):
-
-            losses = []
-            accuracies = []
-            precisions = []
-            recalls = []
-            jaccards = []
-            val_data = inputProvider.val_seq_batch_itr(batch_size)
-            for i, sequence_batch in enumerate(val_data):
-                result = session.run([loss,acc,precision,recall,jaccard,confusion_matrix],
-                                        feed_dict={inp:sequence_batch.images,
-                                        label:sequence_batch.labels,
-                                        weights:sequence_batch.weights,
-                                        is_training_pl:False})#,
-                                        #keep_prob :1.0})
-                loss_value = result[0]
-                acc_value = result[1]
-                precision_value = result[2]
-                recall_value = result [3]
-                jaccard_value = result[4]
-                losses.append(loss_value)
-                accuracies.append(acc_value)
-                precisions.append(precision_value)
-                recalls.append(recall_value)
-                jaccards.append(jaccard_value)
-                logger.info('val iters:{}, seq_no:{} loss :{} acc:{}'
-                                'p:{} r:{} j:{} '.format(step, i, loss_value, acc_value,precision_value,recall_value,jaccard_value))
-
-            
-            avg_loss = sum(losses)/len(losses)
-            avg_accuracy  = sum(accuracies)/len(accuracies)
-            avg_precision = sum(precisions)/len(precisions)
-            avg_recall = sum(recalls)/len(recalls)
-            avg_jaccard = sum(jaccards)/len(jaccards)
-
-
-            feed = {val_loss_pl: avg_loss,
-                    val_acc_pl:avg_accuracy,
-                    val_precision_pl:avg_precision,
-                    val_recall_pl:avg_recall,
-                    val_jaccard_pl:avg_jaccard
-                    }
-            
-            val_summary = session.run([merged_val_summary],feed_dict = feed)
-            summary_writer.add_summary(val_summary[0],step)
+        #saver.export_meta_graph("metagraph.meta", as_text=True)
 
 
         with tf.Session(config=tf.ConfigProto(log_device_placement=False)) as sess:
 
             # Use predefined checkpoint
-            if CHECKPOINT is None:
+            if START_CHECKPOINT is None:
                 checkpoint_file = tf.train.latest_checkpoint(EXP_DIR);
 
             else:
-                checkpoint_file = CHECKPOINT
-                max_iters = max_iters*2
+                checkpoint_file = START_CHECKPOINT
 
             if checkpoint_file:
                 logger.info('using checkpoint :{}'.format(checkpoint_file))
@@ -256,14 +207,18 @@ if __name__ == '__main__':
             train_summary_writer = tf.summary.FileWriter(EVENTS_DIR + '/train', sess.graph)
             test_summary_writer = tf.summary.FileWriter(EVENTS_DIR + '/test')
 
+            logger.info('initializing db policy')
+            inputProvider.db.set_policy(imdb.CustomMaskDB2016.POLICY_SELECT_CM, 0.85)
+            logger.info('setting custom mask folder:{}'.format(custom_mask_folder))
+            inputProvider.db.set_mask_folder(custom_mask_folder)
             logger.info('initializing iterator')
             inputProvider.initialize_iterator(batch_size)
-            logger.info('initializing fetcher')
-            inputProvider.intitialize_fetcher()
+            #logger.info('initializing fetcher')
+            #inputProvider.intitialize_fetcher()
 
             while global_step_var.eval() <= max_iters:
                 step = global_step_var.eval()
-                sequence_batch = inputProvider.next_mini_batch()
+                sequence_batch = inputProvider.next_mini_batch_sync()
 
 
                 result = sess.run([apply_gradient_op, loss,merged_summary,acc,precision,recall,jaccard,tp_tensor,
@@ -302,9 +257,13 @@ if __name__ == '__main__':
                     test_out_dir = os.path.join('test_out',RUN_ID,'iter-{}'.format(step))
                     ensure_dir(test_out_dir)
                     test_segnet2.test_network(sess,net_dict,test_out_dir,pfc)
+                    mask_folder = os.path.join(test_out_dir, '480p')
+                    logger.info('setting custom mask folder:{}'.format(mask_folder))
+                    inputProvider.db.set_mask_folder(mask_folder)
                 
             train_summary_writer.close()
             test_summary_writer.close()
     
     
-    
+if __name__ == '__main__':
+    train()

@@ -98,7 +98,7 @@ def _variable_with_weight_decay(name, shape, initializer, wd):
                            initializer)
 
     if wd is not None:
-        weight_decay = tf.mul(tf.nn.l2_loss(var), wd, name='weight_loss')
+        weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')
         tf.add_to_collection('losses', weight_decay)
     return var
 
@@ -180,7 +180,7 @@ def inference(images, phase_train, is_training = True,weights=None):
                                  [batch_size, int(ceil(IMG_HEIGHT / 8)), int(np.ceil(IMG_WIDTH / 8)), 512], 2, "up2x")
 
     net = conv_layer_with_bn(net, [3, 3, 512, 256], phase_train, False, name="decode_reduce_3_2")
-    net = tf.concat(3, [net,skip_8], name='concat3')
+    net = tf.concat(axis=3, values=[net,skip_8], name='concat3')
     net = conv_layer_with_bn(net, [3, 3, 512, 256], phase_train, False, name="decode_reduce_3_1")
 
     net = deconv_layer(net, [2, 2, 256, 256],
@@ -194,7 +194,7 @@ def inference(images, phase_train, is_training = True,weights=None):
                        [batch_size, int(ceil(IMG_HEIGHT / 2)), int(np.ceil(IMG_WIDTH / 2)), 128], 2, "up8x")
 
     net = conv_layer_with_bn(net, [3, 3, 128, 64], phase_train, False, name="decode_reduce_1_2")
-    net = tf.concat(3, [net, skip_2], name='concat3')
+    net = tf.concat(axis=3, values=[net, skip_2], name='concat3')
     net = conv_layer_with_bn(net, [3, 3, 128, 64], phase_train, False, name="decode_reduce_1_1")
 
     net = deconv_layer(net, [2, 2, 64, 64],

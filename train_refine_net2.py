@@ -63,7 +63,7 @@ if __name__ == '__main__':
         loss = tf.reduce_mean(loss) #+ regularization_loss
 
         
-        loss_unweighted = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(net, label_reshaped))    
+        loss_unweighted = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=net, labels=label_reshaped))    
         # Declare the optimizer
         global_step_var = tf.Variable(1, trainable=False)
             
@@ -82,7 +82,7 @@ if __name__ == '__main__':
             
         # Input Provider
         inputProvider = SampleInputProvider(is_coarse=False,is_dummy=False)
-        init_op = tf.initialize_variables([global_step_var])
+        init_op = tf.variables_initializer([global_step_var])
             
         # Testing
         out=tf.reshape(tf.sigmoid(net),[-1,224,224,1])
@@ -102,15 +102,15 @@ if __name__ == '__main__':
 
         for grad, var in gradients:
             if grad is not None:
-                tf.histogram_summary(var.op.name + '/gradients', grad)
+                tf.summary.histogram(var.op.name + '/gradients', grad)
 
-        tf.scalar_summary('/loss', loss)
-        tf.scalar_summary('/accuracy', acc)
-        tf.scalar_summary('/precision', precision)
-        tf.scalar_summary('/recall', recall)
-        tf.scalar_summary('/regularization_loss', regularization_loss)
+        tf.summary.scalar('/loss', loss)
+        tf.summary.scalar('/accuracy', acc)
+        tf.summary.scalar('/precision', precision)
+        tf.summary.scalar('/recall', recall)
+        tf.summary.scalar('/regularization_loss', regularization_loss)
         # tf.scalar_summary('/loss_unweighted',loss_unweighted)
-        merged_summary = tf.merge_all_summaries()
+        merged_summary = tf.summary.merge_all()
 
         VALIDATION_SUMMARIES = 'validation_summaries'
 
@@ -121,12 +121,12 @@ if __name__ == '__main__':
         # sval_loss_unweighted_pl = tf.placeholder(tf.float32)
 
         # sval_loss_unweighted_summary = tf.scalar_summary('/val/loss_unweighted', val_loss_unweighted_pl,                                                      collections=VALIDATION_SUMMARIES)
-        val_loss_summary = tf.scalar_summary('/val/loss', val_loss_pl, collections=VALIDATION_SUMMARIES)
-        val_acc_summary = tf.scalar_summary('/val/accuracy', val_acc_pl, collections=VALIDATION_SUMMARIES)
-        val_precision_summary = tf.scalar_summary('/val/precision', val_precision_pl, collections=VALIDATION_SUMMARIES)
-        val_recall_summary = tf.scalar_summary('/val/recall', val_recall_pl, collections=VALIDATION_SUMMARIES)
+        val_loss_summary = tf.summary.scalar('/val/loss', val_loss_pl, collections=VALIDATION_SUMMARIES)
+        val_acc_summary = tf.summary.scalar('/val/accuracy', val_acc_pl, collections=VALIDATION_SUMMARIES)
+        val_precision_summary = tf.summary.scalar('/val/precision', val_precision_pl, collections=VALIDATION_SUMMARIES)
+        val_recall_summary = tf.summary.scalar('/val/recall', val_recall_pl, collections=VALIDATION_SUMMARIES)
 
-        merged_val_summary = tf.merge_summary(
+        merged_val_summary = tf.summary.merge(
             [val_loss_summary, val_acc_summary, val_precision_summary, val_recall_summary],
             collections=None)
         ########################
@@ -189,8 +189,8 @@ if __name__ == '__main__':
                 refine_net.initialize(sess)
                 sess.run(init_op)
 
-            train_summary_writer = tf.train.SummaryWriter(EVENTS_DIR + '/train', sess.graph)
-            test_summary_writer = tf.train.SummaryWriter(EVENTS_DIR + '/test')
+            train_summary_writer = tf.summary.FileWriter(EVENTS_DIR + '/train', sess.graph)
+            test_summary_writer = tf.summary.FileWriter(EVENTS_DIR + '/test')
             while global_step_var.eval() <= max_iters:
                 # logger.info('Executing step:{}'.format(step))
                 next_batch = inputProvider.sequence_batch_itr(batch_size)

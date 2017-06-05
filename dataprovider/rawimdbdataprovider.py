@@ -17,7 +17,6 @@ import random
 import skimage
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from dataprovider import imdb
-from dataprovider.fetcher import QueuedFetcher
 
 
 import matplotlib.pyplot as plt
@@ -41,7 +40,6 @@ class InputProvider:
         self.prev_frame_calculator = prev_frame_calculator
         self.db = imdb.get_imdb(db_name)
         self.dataiter = None
-        self.fetcher = None
 
            
             
@@ -69,8 +67,7 @@ class InputProvider:
             config[ImageRandomTransformer.CONFIG_ROTATION_ANGLE_STEP] = None
             config[ImageRandomTransformer.CONFIG_SHEAR_RANGE] = [-5,5]
             config[ImageRandomTransformer.CONFIG_SHEAR_ANGLE_STEP] = None
-            config[ImageRandomTransformer.CONFIG_SCALE_FACTOR_RANGE] = [1.0,1.3]
-            config[ImageRandomTransformer.CONFIG_SCALE_FACTOR_STEP] = 0.1
+            config[ImageRandomTransformer.CONFIG_SCALE_FACTOR_RANGE] = [1.0,1.5]
             config[ImageRandomTransformer.CONFIG_TRANSLATION_FACTOR_STEP] = 0.1
             config[ImageRandomTransformer.CONFIG_TRANSLATION_FACTOR_RANGE] = [-0.2,0.2]
 
@@ -124,18 +121,11 @@ class InputProvider:
 
                     #weights[i,:,:] = inputhelper.get_distance_transform(label)
 
-                    weights[i,:,:] = inputhelper.get_weights_classwise_osvos_old(label)
+                    #weights[i,:,:] = inputhelper.get_weights_classwise_osvos_old(label)
                     #weights[i,:,:] = inputhelper.get_weights_osvos_distance(label)
 
                     #weights[i,:,:] = inputhelper.get_weights_classwise2(label,factor=3)
                     inputhelper.verify_input_img(images[i,:,:,:])
-
-
-
-
-
-
-                images = vgg_preprocess(images)
 
 
                 # Prepare data batch
@@ -227,25 +217,12 @@ class InputProvider:
         self.batch_size = batch_size
         self.dataiter = self.DataIterator(self.db, self.prev_frame_calculator, batch_size, is_training=True)
 
-    def intitialize_fetcher(self):
-        self.fetcher = QueuedFetcher(self)
-        self.fetcher.daemon = True
-        self.fetcher.start()
-
-    def next_mini_batch_sync(self):
+    def next_mini_batch(self):
         try:
             minibatch = self.dataiter.next()
         except StopIteration:
             self.initialize_iterator(self.batch_size)
             minibatch = self.dataiter.next()
-
-        return minibatch
-
-    def next_mini_batch(self):
-        if self.fetcher is None:
-            print ("fetcher not initialized")
-        else:
-            minibatch = self.fetcher.get_next()
 
         return minibatch
 

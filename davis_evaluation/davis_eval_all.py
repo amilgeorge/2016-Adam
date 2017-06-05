@@ -3,24 +3,24 @@ import argparse
 
 import numpy   as np
 import subprocess
-from plot_train_graph import prepare_and_plot
+import plot_train_graph_seq as pgs
+import plot_train_graph as pg
 import re
 
 
 def parse_args():
-	"""Parse input arguments."""
+    """Parse input arguments."""
+    parser = argparse.ArgumentParser(description="""Evaluate and store results.""")
 
-	parser = argparse.ArgumentParser(
-			description="""Evaluate and store results.
-			""")
-
-	parser.add_argument(
+    parser.add_argument(
 			dest='input',default=None,type=str,
 			help='Path to the technique to be evaluated')
 
-	args = parser.parse_args()
 
-	return args
+    parser.add_argument('-ps','--plotseq',action = 'store_true')
+
+    args = parser.parse_args()
+    return args
 
 def evaluate(result_dir):
     print("Evaluating : ",result_dir)
@@ -34,7 +34,7 @@ def evaluate(result_dir):
     p = subprocess.Popen(args,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return p
 
-def eval_all(directory):
+def eval_all(directory,plotseq):
     all_dirs = os.listdir(directory)
     processes = []
     for dir in all_dirs:
@@ -53,8 +53,10 @@ def eval_all(directory):
         iters.append(iter_no)
 
     iters.sort()
-    print(iters)
-    prepare_and_plot(directory,iters)
+    if plotseq:
+        pgs.prepare_and_plot(directory, iters)
+    else:
+        pg.prepare_and_plot(directory,iters)
 
 
 
@@ -63,8 +65,8 @@ def eval_all(directory):
 if __name__ == '__main__':
     args = parse_args()
     args.input = os.path.abspath(args.input)
-
-    eval_all(args.input)
+    print("plot seq wise:{}".format(args.plotseq))
+    eval_all(args.input,args.plotseq)
 
 
 

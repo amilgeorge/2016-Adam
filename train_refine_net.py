@@ -58,7 +58,7 @@ if __name__ == '__main__':
         loss = weighted_cross_entropy( net, label_reshaped,weights_reshaped)
         loss = tf.reduce_mean(loss)
         
-        loss_unweighted = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(net, label_reshaped))    
+        loss_unweighted = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=net, labels=label_reshaped))    
         # Declare the optimizer
         global_step_var = tf.Variable(0, trainable=False)
             
@@ -72,7 +72,7 @@ if __name__ == '__main__':
             
         for grad, var in gradients:
             if grad is not None:
-                tf.histogram_summary(var.op.name + '/gradients', grad)
+                tf.summary.histogram(var.op.name + '/gradients', grad)
                     
             
         apply_gradient_op = optimizer.apply_gradients(gradients, global_step_var)
@@ -82,15 +82,15 @@ if __name__ == '__main__':
             
         # Input Provider
         inputProvider = SampleInputProvider(is_coarse=False)    
-        init_op = tf.initialize_variables([global_step_var])
+        init_op = tf.variables_initializer([global_step_var])
             
         # Testing
         out=tf.reshape(tf.sigmoid(net),[-1,224,224,1])
             
-        tf.image_summary('/label',h_label)
-        tf.image_summary('/output',out)
-        tf.scalar_summary('/loss', loss)
-        tf.scalar_summary('/loss_unweighted',loss_unweighted)
+        tf.summary.image('/label',h_label)
+        tf.summary.image('/output',out)
+        tf.summary.scalar('/loss', loss)
+        tf.summary.scalar('/loss_unweighted',loss_unweighted)
         
         saver = tf.train.Saver(max_to_keep = 10)
         #saver.export_meta_graph("metagraph.meta", as_text=True)        
@@ -111,8 +111,8 @@ if __name__ == '__main__':
                 sess.run(init_op)
                 #start_epoch = global_step_var.eval(sess)
             
-            merged_summary = tf.merge_all_summaries()
-            summary_writer = tf.train.SummaryWriter(EVENTS_DIR, sess.graph)
+            merged_summary = tf.summary.merge_all()
+            summary_writer = tf.summary.FileWriter(EVENTS_DIR, sess.graph)
             
             while global_step_var.eval() < max_iters:                              
                 #logger.info('Executing step:{}'.format(step))
