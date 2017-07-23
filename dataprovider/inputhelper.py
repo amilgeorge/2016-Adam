@@ -10,6 +10,8 @@ from skimage import io,transform,morphology
 import scipy.ndimage as ndi
 import os
 
+PREPROCESS_LABEL_TO_DIST = 'label_to_dist'
+
 def prev_mask_path(out_dir,seq_name, frame_no, offset):
     prev_frame_no = max(0,frame_no - offset)
     return mask_path(out_dir,seq_name,prev_frame_no)
@@ -185,14 +187,27 @@ def get_label_changes(label,prev_mask):
     changes = np.abs(changes)
     return np.uint8(changes)
 
-def verify_input_img(input_img):
-    rgb=input_img[:,:,0:3]
-    prev_mask=input_img[:,:,3]
-    prev_rgb=input_img[:,:,4:7]
+def verify_input_img_label_to_dist_preprocess(input_img):
+    rgb = input_img[:, :, 0:3]
+    prev_mask = input_img[:, :, 3]
+    prev_rgb = input_img[:, :, 4:7]
 
-    assert np.logical_or((prev_mask == 0), (prev_mask == 255)).all(), "expected 0 or 255 in  prev mask - {}".format(np.unique(prev_mask))
+    assert (prev_mask >= 0).all() and (prev_mask <= 255).all().all(), "expected 0-255 in  prev mask - {}".format(
+        np.unique(prev_mask))
     assert (rgb >= 0).all() and (rgb <= 255).all(), "expected img values range 0-255"
     assert (prev_rgb >= 0).all() and (prev_rgb <= 255).all(), "expected prev_img values range 0-255"
+
+def verify_input_img(input_img,preprocessor = None):
+    if preprocessor is None:
+        rgb=input_img[:,:,0:3]
+        prev_mask=input_img[:,:,3]
+        prev_rgb=input_img[:,:,4:7]
+
+        assert np.logical_or((prev_mask == 0), (prev_mask == 255)).all(), "expected 0 or 255 in  prev mask - {}".format(np.unique(prev_mask))
+        assert (rgb >= 0).all() and (rgb <= 255).all(), "expected img values range 0-255"
+        assert (prev_rgb >= 0).all() and (prev_rgb <= 255).all(), "expected prev_img values range 0-255"
+    elif preprocessor == 'label_to_dist':
+        verify_input_img_label_to_dist_preprocess(input_img)
 
 def random_crop(input_img,crop_shape):
     src_shape = input_img.shape[0:2]
@@ -224,7 +239,7 @@ def prepare_input_img_uint8(img, prev_mask, prev_img):
     prev_mask -- the previous evaluated mask (0-1)
     prev_img -- previous RGB (0-1 range)
     """
-    assert np.logical_or((prev_mask == 255), (prev_mask == 0)).all(), "expected 255 or 0 in prev mask"
+    #assert prev_mask == 255), (prev_mask == 0)).all(), "expected 255 or 0 in prev mask"
     assert (img >= 0).all() and (img <= 255).all(), "expected img values range 0-255"
     assert (prev_img >= 0).all() and (prev_img <= 255).all(), "expected prev_img values range 0-255"
 
@@ -270,9 +285,29 @@ def prepare_input_img(img,prev_mask,prev_img):
     
     return inp_img
 
+def label_to_dist(label):
+    if not label.any():
+        return label
+    else:
+        clip_dist = 200
+        dist_transform = get_distance_transform(label)
+        dist_transform = np.clip(dist_transform,0,clip_dist)
+        dist_transform = dist_transform/clip_dist
+        dist_transform = 1 - dist_transform
+        return dist_transform
 
+def prev_mask_preprocess(label,preprocessor):
+    if preprocessor == PREPROCESS_LABEL_TO_DIST:
+        prev_mask = label_to_dist(label)
+        return prev_mask
+    else:
+        raise 'Unknown preprocessor'
 
 if __name__ == '__main__':
-    l = np.zeros((2,3))
+    l = np.zeros((4,4))
     l[0,1]=1
-    w = get_weights_classwise(l)
+    w = get_distance_transform(l)
+    w2 = label_to_dist(l)
+    print(w)
+    print(w2)
+

@@ -20,7 +20,7 @@ import skimage
 import skimage.io
 import re
 # modules
-"""
+
 @ops.RegisterGradient("MaxPoolWithArgmax")
 def _MaxPoolWithArgmaxGrad(op, grad, unused_argmax_grad):
   return gen_nn_ops._max_pool_grad(op.inputs[0],
@@ -31,7 +31,6 @@ def _MaxPoolWithArgmaxGrad(op, grad, unused_argmax_grad):
                                    padding=op.get_attr("padding"),
                                    data_format='NHWC')
 
-"""
 # Constants describing the training process.
 MOVING_AVERAGE_DECAY = 0.9999     # The decay to use for the moving average.
 NUM_EPOCHS_PER_DECAY = 350.0      # Epochs after which learning rate decays.

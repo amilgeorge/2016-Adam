@@ -8,14 +8,11 @@ from net.segnet2 import NUM_CLASSES
 import tensorflow as tf
 import numpy as np
 from dataprovider.imdbdataprovider import InputProvider
-from dataprovider import imdbdataprovider_prev_mask_preprocess as imdb_pmp
 from dataprovider import frame_no_calculator as fnc
 
 from common.logger import getLogger
 from common.diskutils import ensure_dir
 from net import segnet2 as segnet
-from net import segnet_brn as segnet_brn
-
 import time
 import os
 import test_segnet2
@@ -25,21 +22,16 @@ from dataprovider import imdb
 
 slim = tf.contrib.slim
 
-PREV_MASK_PREPROCESSER = imdb_pmp.PREPROCESS_LABEL_TO_DIST
+
 OFFSETS = [(fnc.POLICY_OFFSET,1)]#list(range(1,7))#[10]
 #OFFSETS = [(fnc.POLICY_DEFAULT_ZERO,0)]
 offset_string = "-".join(str(x) for p,x in OFFSETS)
-dbname = imdb.IMDB_DAVIS_2016
+dbname = imdb.IMDB_DAVIS_COMBO
 lr = 1e-2
 
-SEGNET_BRN = "segnet_brn"
-SEGNET_DEFAULT = "segnet_default"
-net=SEGNET_BRN
+RUN_ID = "s480pgradacc-{}-O{}-osvosold-reg1e-4-mo<1e-2>-de-scale1.3-3".format(dbname,offset_string)
 
-RUN_ID = "s480pvgg-{}-{}-O{}-P{}-osvosold-reg1e-4-mo<1e-2>-de-scale1.3-1".format(net,dbname,offset_string,PREV_MASK_PREPROCESSER)
-
-#CHECKPOINT = 'exp_repo/s480pvgg-daviscombo-O1-osvosold-reg1e-4-mo<1e-2>-de-scale1.3-3/iters-500000'
-CHECKPOINT = None
+CHECKPOINT = None#'exp/segnetvggwithskip-half-wl-osvos-O10-1/iters-45000'
 
 EVENTS_DIR = os.path.join('events',RUN_ID)#time.strftime("%Y%m%d-%H%M%S")
 EXP_DIR = os.path.join('exp',RUN_ID)
@@ -57,7 +49,10 @@ if __name__ == '__main__':
 
     #gc.enable()
     #gc.set_debug(gc.DEBUG_LEAK)
-    SAVE_STEP_SIZE = 5000
+    SAVE_STEP_SIZE = 2000
+    max_iters = 500000
+    batch_size = 10
+
 
     ensure_dir(EXP_DIR)
     ensure_dir(LOGS_DIR)        
@@ -83,12 +78,7 @@ if __name__ == '__main__':
                     
         #loss,logit = segnet.inference(inp, label, is_training_pl,weights)
         #loss,logit = segnet.inference_vgg16(inp, label, is_training_pl,weights)
-        if net==SEGNET_BRN:
-            logger.info("using net segnet brn")
-            loss,logit = segnet_brn.inference_vgg16_withskip(inp, label, is_training_pl,weights)
-        elif net==SEGNET_DEFAULT:
-            logger.info("using net defaut")
-            loss,logit = segnet.inference_vgg16_withskip(inp, label, is_training_pl,weights)
+        loss,logit = segnet.inference_vgg16_withskip(inp, label, is_training_pl,weights)
         #loss,logit = segnet.inference_vgg16_withdrop(inp, label, is_training_pl,weights,keep_prob)
 
 
@@ -116,32 +106,39 @@ if __name__ == '__main__':
         #boundaries = [100000, 200000]
         #values = [1e-2, 1e-3, 1e-4]
         #learning_rate = tf.train.piecewise_constant(global_step_var, boundaries, values)
-        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
 
-        with tf.control_dependencies([loss_averages_op]+update_ops):
-        #optimizer = tf.train.GradientDescentOptimizer(0.01)
-            optimizer = tf.train.MomentumOptimizer(lr,0.9)
-            logger.info("using lr: {}".format(lr))
-            #optimizer = tf.train.AdamOptimizer(lr)
-            
-            gradients = optimizer.compute_gradients(loss)
-            
-        
+        # Define optimization method
+        with tf.name_scope('optimization'):
+            tf.summary.scalar('learning_rate', lr)
+            optimizer = tf.train.MomentumOptimizer(lr, 0.9)
+            grads_and_vars = optimizer.compute_gradients(loss)
+            with tf.name_scope('grad_accumulator'):
+                grad_accumulator = {}
+                for ind in range(0, len(grads_and_vars)):
+                    if grads_and_vars[ind][0] is not None:
+                        grad_accumulator[ind] = tf.ConditionalAccumulator(grads_and_vars[ind][0].dtype)
+            with tf.name_scope('apply_gradient'):
+                grad_accumulator_ops = []
+                for var_ind, grad_acc in grad_accumulator.items():
+                    var_name = str(grads_and_vars[var_ind][1].name).split(':')[0]
+                    var_grad = grads_and_vars[var_ind][0]
+                    grad_accumulator_ops.append(grad_acc.apply_grad(var_grad,
+                                                                    local_step=global_step_var))
+            with tf.name_scope('take_gradients'):
+                mean_grads_and_vars = []
+                for var_ind, grad_acc in grad_accumulator.items():
+                    mean_grads_and_vars.append(
+                        (grad_acc.take_grad(batch_size), grads_and_vars[var_ind][1]))
+                apply_gradient_op = optimizer.apply_gradients(mean_grads_and_vars, global_step=global_step_var)
+
+
                     
             
-        apply_gradient_op = optimizer.apply_gradients(gradients, global_step_var)
-        #apply_gradient_op = segnet.train(loss, global_step_var)    
-        max_iters = 900000
-        batch_size = segnet.BATCH_SIZE
+
             
         # Input Provider
         #inputProvider = SampleInputProvider(resize=[IMG_HEIGHT,IMG_WIDTH],is_dummy=False)
-        if PREV_MASK_PREPROCESSER is None:
-            logger.info("Using no prev mask preprocess")
-            inputProvider = InputProvider(db_name = dbname,prev_frame_calculator=pfc)
-        else:
-            inputProvider = imdb_pmp.InputProvider(db_name = dbname,prev_frame_calculator=pfc,
-                                                   prev_frame_preprocessor=PREV_MASK_PREPROCESSER)
+        inputProvider = InputProvider(db_name = dbname,prev_frame_calculator=pfc)
             
     
         ##### Summaries #######
@@ -165,7 +162,7 @@ if __name__ == '__main__':
         tf.summary.image('/output',tf.expand_dims(out_reshaped[:,:,:,1],3))
         tf.summary.image('/label',tf.expand_dims(label,3))
 
-        for grad, var in gradients:
+        for grad, var in grads_and_vars:
             if grad is not None:
                 tf.summary.histogram(var.op.name + '/gradients', grad)
                 
@@ -174,7 +171,6 @@ if __name__ == '__main__':
         tf.summary.scalar('/precision',precision)
         tf.summary.scalar('/recall',recall)
         tf.summary.scalar('/jaccard',jaccard)
-        tf.summary.scalar('lr',lr)
         #tf.scalar_summary('/regularization_loss', regularization_loss)
 
         merged_summary = tf.summary.merge_all()
@@ -200,52 +196,6 @@ if __name__ == '__main__':
         ########################
         
         saver = tf.train.Saver(max_to_keep = 10)
-        #saver.export_meta_graph("metagraph.meta", as_text=True)    
-        def perform_validation(session,step,summary_writer):
-
-            losses = []
-            accuracies = []
-            precisions = []
-            recalls = []
-            jaccards = []
-            val_data = inputProvider.val_seq_batch_itr(batch_size)
-            for i, sequence_batch in enumerate(val_data):
-                result = session.run([loss,acc,precision,recall,jaccard,confusion_matrix],
-                                        feed_dict={inp:sequence_batch.images,
-                                        label:sequence_batch.labels,
-                                        weights:sequence_batch.weights,
-                                        is_training_pl:False})#,
-                                        #keep_prob :1.0})
-                loss_value = result[0]
-                acc_value = result[1]
-                precision_value = result[2]
-                recall_value = result [3]
-                jaccard_value = result[4]
-                losses.append(loss_value)
-                accuracies.append(acc_value)
-                precisions.append(precision_value)
-                recalls.append(recall_value)
-                jaccards.append(jaccard_value)
-                logger.info('val iters:{}, seq_no:{} loss :{} acc:{}'
-                                'p:{} r:{} j:{} '.format(step, i, loss_value, acc_value,precision_value,recall_value,jaccard_value))
-
-            
-            avg_loss = sum(losses)/len(losses)
-            avg_accuracy  = sum(accuracies)/len(accuracies)
-            avg_precision = sum(precisions)/len(precisions)
-            avg_recall = sum(recalls)/len(recalls)
-            avg_jaccard = sum(jaccards)/len(jaccards)
-
-
-            feed = {val_loss_pl: avg_loss,
-                    val_acc_pl:avg_accuracy,
-                    val_precision_pl:avg_precision,
-                    val_recall_pl:avg_recall,
-                    val_jaccard_pl:avg_jaccard
-                    }
-            
-            val_summary = session.run([merged_val_summary],feed_dict = feed)
-            summary_writer.add_summary(val_summary[0],step)
 
 
         with tf.Session(config=tf.ConfigProto(log_device_placement=False)) as sess:
@@ -256,7 +206,7 @@ if __name__ == '__main__':
 
             else:
                 checkpoint_file = CHECKPOINT
-                #max_iters = max_iters*2
+                max_iters = max_iters*2
 
             if checkpoint_file:
                 logger.info('using checkpoint :{}'.format(checkpoint_file))
@@ -277,33 +227,33 @@ if __name__ == '__main__':
             test_summary_writer = tf.summary.FileWriter(EVENTS_DIR + '/test')
 
             logger.info('initializing iterator')
-            inputProvider.initialize_iterator(batch_size)
+            inputProvider.initialize_iterator(1)
             logger.info('initializing fetcher')
             inputProvider.intitialize_fetcher()
 
             while global_step_var.eval() <= max_iters:
                 step = global_step_var.eval()
-                sequence_batch = inputProvider.next_mini_batch()
 
+                for i in range(batch_size):
+                    sequence_batch = inputProvider.next_mini_batch()
+                    result = sess.run([grad_accumulator_ops, loss,merged_summary,acc,precision,recall,jaccard,tp_tensor,
+                                       fn_tensor,fp_tensor,confusion_matrix],
+                                      feed_dict={inp:sequence_batch.images,
+                                                label:sequence_batch.labels,
+                                                weights:sequence_batch.weights,
+                                                is_training_pl:True})#,
+                                                #keep_prob: 0.5})
+                    loss_value = result[1]
+                    acc_value = result[3]
+                    precision_value = result[4]
+                    recall_value = result[5]
+                    jaccard_value = result[6]
 
-                result = sess.run([apply_gradient_op, loss,merged_summary,acc,precision,recall,jaccard,tp_tensor,
-                                   fn_tensor,fp_tensor,confusion_matrix],
-                                  feed_dict={inp:sequence_batch.images,
-                                            label:sequence_batch.labels,
-                                            weights:sequence_batch.weights,
-                                            is_training_pl:True})#,
-                                            #keep_prob: 0.5})
-                loss_value = result[1]
-                acc_value = result[3]
-                precision_value = result[4]
-                recall_value = result[5]
-                jaccard_value = result[6]
+                    logger.info('iters:{}, mini:{} loss :{} accuracy:{} p:{} r:{} j:{}'.format(step,i, loss_value,acc_value,precision_value,recall_value,jaccard_value))
 
-                logger.info('iters:{}, loss :{} accuracy:{} p:{} r:{} j:{}'.format(step, loss_value,acc_value,precision_value,recall_value,jaccard_value))
+                sess.run(apply_gradient_op)
 
-                if step%100 ==0:
-                    #import pdb
-                    #pdb.set_trace()
+                if step%50 ==0:
                     train_summary_writer.add_summary(result[2], step )
 
 
@@ -321,7 +271,7 @@ if __name__ == '__main__':
                 if step % SAVE_STEP_SIZE == 0:
                     test_out_dir = os.path.join('test_out',RUN_ID,'iter-{}'.format(step))
                     ensure_dir(test_out_dir)
-                    test_segnet2.test_network(sess,net_dict,test_out_dir,pfc,prev_mask_preprocessor = PREV_MASK_PREPROCESSER)
+                    test_segnet2.test_network(sess,net_dict,test_out_dir,pfc)
                 
             train_summary_writer.close()
             test_summary_writer.close()

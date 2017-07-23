@@ -29,6 +29,7 @@ import glob
 IMAGE_HEIGHT = 480
 IMAGE_WIDTH = 854
 
+PREPROCESS_LABEL_TO_DIST = inputhelper.PREPROCESS_LABEL_TO_DIST
 
 
     
@@ -36,10 +37,11 @@ class InputProvider:
 
 
     
-    def __init__(self, db_name , prev_frame_calculator = None):
+    def __init__(self, db_name , prev_frame_calculator = None,prev_frame_preprocessor = None):
 
         self.prev_frame_calculator = prev_frame_calculator
         self.db = imdb.get_imdb(db_name)
+        self.prev_frame_preprocessor = prev_frame_preprocessor
         self.dataiter = None
         self.fetcher = None
 
@@ -49,19 +51,20 @@ class InputProvider:
     
     class DataIterator:
         
-        def __init__(self,db,prev_frame_calculator,batch_size,is_training):
+        def __init__(self,db,prev_frame_calculator,batch_size,is_training,prev_frame_preprocessor):
             self.db = db
             self.prev_frame_calculator = prev_frame_calculator
+            self.prev_frame_preprocessor = prev_frame_preprocessor
             self.is_training = is_training
             self.img_size = [IMAGE_HEIGHT,IMAGE_WIDTH]
             self.img_channels = 7
             num_images = self.db.num_train_infos()
-            print(num_images)
+            print("Num images = {} ,preprocessor :{}".format(num_images,prev_frame_preprocessor))
             self.sequence_info = np.random.permutation(list(range(num_images)))
             self.index = 0
             self.batch_size = batch_size
             self.transformer = ImageRandomTransformer(self._get_transform_config2())
-        
+
           
         def _get_transform_config(self):
             config ={}
@@ -120,11 +123,15 @@ class InputProvider:
                     stked,_ = self.transformer.get_random_transformed(stked)
                     stked = inputhelper.random_crop(stked,self.img_size)
 
-                    image = stked[:,:,0:7]*255
-
+                    image = stked[:, :, 0:7]
                     if self.is_training:
                         image = self.process_prev_mask_in_image(image)
 
+                    if self.prev_frame_preprocessor is not None:
+                        image = self.preprocess_prev_frame(image)
+
+
+                    image = image * 255
                     
                     label = np.uint8(stked[:,:,7])
                     ## Label as changes
@@ -141,7 +148,7 @@ class InputProvider:
                     #weights[i,:,:] = inputhelper.get_weights_osvos_distance(label)
 
                     #weights[i,:,:] = inputhelper.get_weights_classwise2(label,factor=3)
-                    inputhelper.verify_input_img(images[i,:,:,:])
+                    inputhelper.verify_input_img(images[i,:,:,:],self.prev_frame_preprocessor)
 
 
 
@@ -203,7 +210,22 @@ class InputProvider:
             prev_mask_mod = self.add_noise_prev_mask(prev_mask)
             image[:,:,MASK_CHANNEL] = np.round(prev_mask_mod)
             return image
-             
+
+        def label_to_dist_preprocess(self,image):
+            MASK_CHANNEL = 3
+            prev_mask = image[:, :, MASK_CHANNEL]
+            prev_mask = inputhelper.label_to_dist(np.round(prev_mask))
+            image[:, :, MASK_CHANNEL] = prev_mask
+            print(prev_mask)
+            return image
+
+        def preprocess_prev_frame(self,image):
+            if self.prev_frame_preprocessor == PREPROCESS_LABEL_TO_DIST:
+                image = self.label_to_dist_preprocess(image)
+                return image
+            else:
+                print("unknown prev frame preprocessor")
+
         def process_prev_mask_in_images(self,images):
             MASK_CHANNEL = 3
             for i in range(0,size(images,0)):
@@ -234,11 +256,13 @@ class InputProvider:
                 return prev_mask
             
     def sequence_batch_itr(self, batch_size):
-        return self.DataIterator(self.db,self.prev_frame_calculator, batch_size,is_training=True)
+        return self.DataIterator(self.db,self.prev_frame_calculator, batch_size,is_training=True,
+                                 prev_frame_preprocessor=self.prev_frame_preprocessor)
 
     def initialize_iterator(self,batch_size):
         self.batch_size = batch_size
-        self.dataiter = self.DataIterator(self.db, self.prev_frame_calculator, batch_size, is_training=True)
+        self.dataiter = self.DataIterator(self.db, self.prev_frame_calculator, batch_size, is_training=True,
+                                          prev_frame_preprocessor=self.prev_frame_preprocessor)
 
     def intitialize_fetcher(self):
         self.fetcher = QueuedFetcher(self)
@@ -303,11 +327,11 @@ def _debug(img,label,save_loc = None):
    
 def test_gen_samples():
 
-    pfc_offset1 = frame_no_calculator.get(frame_no_calculator.POLICY_DEFAULT_ZERO,0)
+    pfc_offset1 = frame_no_calculator.get(frame_no_calculator.POLICY_OFFSET,1)
     db_name = imdb.IMDB_DAVIS_COMBO
-    provider = InputProvider(db_name=db_name,prev_frame_calculator=pfc_offset1)
+    provider = InputProvider(db_name=db_name,prev_frame_calculator=pfc_offset1,prev_frame_preprocessor=PREPROCESS_LABEL_TO_DIST)
     num=0
-    dir = 'davis_imdb_samp_{}_off0/'.format(db_name)
+    dir = 'davis_imdb_samp_{}_dist/'.format(db_name)
     diskutils.ensure_dir(dir)
     max_num = 1000
     batch_size = 4

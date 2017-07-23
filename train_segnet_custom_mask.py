@@ -31,7 +31,7 @@ lr = 1e-2
 
 RUN_ID = "s480p-{}-O{}-osvosold-reg1e-4-mo<1e-2>-de-scale1.3-3".format(dbname,offset_string)
 
-START_CHECKPOINT = "exp_repo/s480pvgg-daviscombo-O1-osvosold-reg1e-4-mo<1e-2>-de-scale1.3-3/iters-50000"
+START_CHECKPOINT =None# "exp_repo/s480pvgg-daviscombo-O1-osvosold-reg1e-4-mo<1e-2>-de-scale1.3-3/iters-50000"
 START_MASK_FOLDER = "test_out/s480pvgg-daviscombo-O1-osvosold-reg1e-4-mo<1e-2>-de-scale1.3-3/iter-50000/480p"
 
 EVENTS_DIR = os.path.join('events',RUN_ID)#time.strftime("%Y%m%d-%H%M%S")
@@ -192,7 +192,11 @@ def train():
             if checkpoint_file:
                 logger.info('using checkpoint :{}'.format(checkpoint_file))
 
+
                 saver.restore(sess, checkpoint_file)
+                save_step = global_step_var.eval()
+                save_mask_dir = os.path.join('test_out', RUN_ID, 'iter-{}'.format(save_step -1),'480p')
+                custom_mask_folder = save_mask_dir
 
             else :   
                 # Build an initialization operation to run below.

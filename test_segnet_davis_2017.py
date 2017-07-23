@@ -18,7 +18,10 @@ from dataprovider.davis_cached import DataAccessHelper
 from common.logger import getLogger
 import skimage
 import re
-from net import segnet2 as segnet
+#from net import segnet2 as segnet
+from net import segnet_brn as segnet
+
+
 #from dataprovider.finetuneinputprovider import FineTuneDataProvider
 from common.diskutils import ensure_dir
 import numpy as np
@@ -72,6 +75,8 @@ TESTPARAMS50 = ('exp/segnet480pvgg-d2017-wl-O1-mo2/iters-45000',1)
 TESTPARAMS51 = ('exp/segnet480pvgg-daviscombo-wl-O1-osvosold-reg1e-4-lr1e-2-1/iters-45000',1)
 TESTPARAMS52 = ('exp/s480pvgg-daviscombo-O0-osvosold-reg1e-4-lr1e-2-1/iters-365000',fnc.POLICY_DEFAULT_ZERO,0)
 TESTPARAMS53 = ('exp/s480pvgg-daviscombo-O1-osvosold-reg1e-4-lr1e-2-1/iters-315000',fnc.POLICY_OFFSET,1)
+TESTPARAMS54 = ('exp_repo/s480pvgg-segnet_brn-daviscombo-O1-osvosold-reg1e-4-mo<1e-2>-de-scale1.3-3/iters-315000',fnc.POLICY_OFFSET,1)
+TESTPARAMS55 = ('exp_repo/s480pvgg-segnet_brn-daviscombo-O1-Plabel_to_dist-osvosold-reg1e-4-mo<1e-2>-de-scale1.3-1/iters-685000',fnc.POLICY_OFFSET,1)
 
 
 SET_TRAIN_VAL = 'trainval'
@@ -82,7 +87,7 @@ OFFSET  = None
 
 learn_changes_mode = False
 use_gt_prev_mask = False
-SET = SET_TRAIN_VAL
+SET = SET_TEST_DEV
 
 SAVE_PREDICTIONS = False
 
@@ -153,7 +158,7 @@ def build_test_model():
                }
     return ret_val
     
-def test_sequence(session,net,sequence_name,out_dir, pfc):
+def test_sequence(session,net,sequence_name,out_dir, pfc,prev_mask_preprocessor = None):
 
     mask_out_dir = os.path.join(out_dir,'480p')
     prob_map_dir = os.path.join(out_dir,'prob_maps')
@@ -189,14 +194,20 @@ def test_sequence(session,net,sequence_name,out_dir, pfc):
 
                 print("using prev mask {} for frame {}".format(prev_label_path,frame_no))
                 prev_mask = read_label(prev_label_path)
+                prev_mask = threshold_image(prev_mask)
+                assert np.logical_or((prev_mask == 1), (prev_mask == 0)).all(), "expected 0 or 1 in binary mask"
+
                 if DILATE_SZ >0 :
                     print("dilating")
                     prev_mask = morphology.dilation(prev_mask, np.ones([DILATE_SZ, DILATE_SZ]))
-                assert np.logical_or((prev_mask == 255), (prev_mask == 0)).all(), "expected 0 or 255 in binary mask"
+                if prev_mask_preprocessor is not None:
+                    prev_mask = inputhelper.prev_mask_preprocess(prev_mask, prev_mask_preprocessor)
+                else:
+                    assert np.logical_or((prev_mask == 255), (prev_mask == 0)).all(), "expected 0 or 255 in binary mask"
 
-
+            prev_mask = prev_mask * 255
             inp_img = inputhelper.prepare_input_img_uint8(img, prev_mask, prev_img)
-            inputhelper.verify_input_img(inp_img[0,:,:,:])
+            inputhelper.verify_input_img(inp_img[0,:,:,:],prev_mask_preprocessor)
             inp_img = vgg_preprocess(inp_img)
 
             # Run model
@@ -227,15 +238,14 @@ def test_sequence(session,net,sequence_name,out_dir, pfc):
 
             save_image(mask_out_dir, sequence_name,obj_id, frame_no, skimage.img_as_ubyte(pred_mask))
 
-def test_network(sess,net,out_dir,pfc):
-    #test_sequences = davis.test_sequence_list() + davis.train_sequence_list()
+def test_network(sess,net,out_dir,pfc,prev_mask_preprocessor = None):
     test_sequences = davis.get_sequences(SET)
     for seq in test_sequences:
         logger.info('Testing sequence: {}'.format(seq))
-        test_sequence(sess, net, seq, out_dir, pfc)
+        test_sequence(sess, net, seq, out_dir, pfc = pfc,prev_mask_preprocessor = prev_mask_preprocessor)
 
 
-def test_net(sequences,out_dir,pfc):
+def test_net(sequences,out_dir,pfc,prev_mask_preprocessor=None):
     #if sequences == None:
     #    sequences=[name for name in os.listdir(inp_dir) if os.path.isdir(name)]
     
@@ -245,9 +255,8 @@ def test_net(sequences,out_dir,pfc):
         restorer2 = tf.train.Saver()
         restorer2.restore(sess,CHECKPOINT)
         
-        for seq in sequences:
-            logger.info('Testing sequence: {}'.format(seq))
-            test_sequence(sess, net, seq,out_dir, pfc)
+        test_network(sess, net,out_dir, pfc,prev_mask_preprocessor=prev_mask_preprocessor)
+
 
 
         
@@ -255,7 +264,7 @@ if __name__ == '__main__':
     #global CHECKPOINT
     #global OFFSET
 
-    test_points = [TESTPARAMS53]
+    test_points = [TESTPARAMS55]
 
     for tp in test_points:
         CHECKPOINT = tp[0]
@@ -265,7 +274,7 @@ if __name__ == '__main__':
         pfc = fnc.get(fnc_policy,OFFSET)
 
         test_sequences = davis.get_sequences(SET)
-        m=re.match(r"exp/(.*)/iter.*",CHECKPOINT)
+        m=re.match(r"exp.*/(.*)/iter.*",CHECKPOINT)
         res_dir = m.group(1)
 
         print ("Testing for {}".format(res_dir) )
@@ -280,4 +289,4 @@ if __name__ == '__main__':
 
         out_dir = "../Results/{}".format(res_dir)
         logger.info("Output to: {}".format(out_dir))
-        test_net(test_sequences, out_dir=out_dir,pfc=pfc)
+        test_net(test_sequences, out_dir=out_dir,pfc=pfc,prev_mask_preprocessor=inputhelper.PREPROCESS_LABEL_TO_DIST)

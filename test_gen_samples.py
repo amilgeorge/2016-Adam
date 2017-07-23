@@ -23,7 +23,7 @@ from models import resnet_v1
 from net import segnet3 as segnet
 #from dataprovider.inputprovider import InputProvider
 #from dataprovider import imgprovider
-from dataprovider import imdbdataprovider as inpprovider
+from dataprovider import imdbdataprovider_prev_mask_preprocess as inpprovider
 from dataprovider.davis_cached import DataAccessHelper as DataAccessHelperCached
 
 from common import diskutils

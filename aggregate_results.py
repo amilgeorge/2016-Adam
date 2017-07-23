@@ -107,13 +107,15 @@ def aggregate_sequences(src_dirs,out_dir):
 
 if __name__ == '__main__':
 
-    out_dir = 'agg_half2-O1O5O10'
+    out_dir = 'agg_osvos_adam'
     out_dir = os.path.join('../Results',out_dir)
     src_dirs =['segnetvggwithskip-half2-wl-osvos-O1-1-1',
                   'segnetvggwithskip-half2-wl-osvos-O5-1-O5-1',
                   'segnetvggwithskip-half2-wl-osvos-O10-1-O10-1']
 
     src_dirs = [os.path.join('../Results',sd,'prob_maps') for sd in src_dirs]
+
+    src_dirs= ["test_out/s480pvgg-davis2016-O1-osvosold-reg1e-4-adam<1e-6>-de-1/iter-500000",""]
     aggregate_sequences(src_dirs,out_dir)
 
 

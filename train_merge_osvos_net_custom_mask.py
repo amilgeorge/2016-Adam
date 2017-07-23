@@ -56,8 +56,8 @@ NET_VER_RM_lstm = 'rm_lstm'
 
 NET_VER_L2_NORM_BRANCH2 = 'L2_normed_branch2'
 
-net_ver = NET_VER_PSP_V4
-RUN_ID = "mergeosvosnet-{}-{}-B1O-{}-adam<1e-6>-opt-adam-<1e-4>-250iter-1".format(net_ver,dbname,OFFSETS[0][1])
+net_ver = NET_VER_BASELINE
+RUN_ID = "mergeosvosnet-custommask-{}-{}-B1O-{}-adam<1e-6>-opt-adam-<1e-4>-250iter-1".format(net_ver,dbname,OFFSETS[0][1])
 
 
 EVENTS_DIR = os.path.join('events',RUN_ID)#time.strftime("%Y%m%d-%H%M%S")
@@ -216,11 +216,13 @@ if __name__ == '__main__':
         # Input Provider
         inp_provider_dict = {}
         for seq in all_train_seqs:
-            sub_db_name = '{},{}'.format(imdb.IMDB_SEQ_DAVIS2016,seq)
+            sub_db_name = '{},{}'.format(imdb.IMDB_CUSTOM_SEQ_DAVIS2016,seq)
             inp_provider = InputProvider(db_name = sub_db_name,prev_frame_calculator=pfc)
+            inp_provider.db.set_policy(imdb.CUSTOMSEQDB2016.POLICY_SELECT_CM, 0.85)
             inp_provider_dict[seq] = inp_provider
 
-
+        mask_folder = '/usr/stud/george/workspace/Results/' \
+                      'mergeosvosnet-v1_baseline-seqdavis2016-B1O-1-adam<1e-6>-opt-adam-<1e-4>-250iter-1-gtmask-O1-1-cm/480p'
     
         ##### Summaries #######
         prediction_reshaped = tf.reshape(predictions, [-1])
@@ -282,6 +284,11 @@ if __name__ == '__main__':
             curr_seq = np.random.choice(all_train_seqs)
 
             input_provider = inp_provider_dict[curr_seq]
+            seq_mask_folder = os.path.join(mask_folder, curr_seq)
+            print("mask_folder:{} seq: {}".format(mask_folder,curr_seq))
+
+            input_provider.db.set_mask_folder(seq_mask_folder)
+            print("setting mask folder to: {}".format(seq_mask_folder))
             reinit_branch(sess, curr_seq)
 
             logger.info('starting iterations ...')
@@ -322,16 +329,19 @@ if __name__ == '__main__':
                         logger.info('Flushing .')                        
                         train_summary_writer.flush()
 
-                    if step % (10*MAX_ITER_PER_SEQ) == 0:
+                    if step % (5*MAX_ITER_PER_SEQ) == 0:
                         test_out_dir = os.path.join('test_out',RUN_ID,'iter-{}'.format(step))
                         ensure_dir(test_out_dir)
                         test_merge_osvos_net.test_network(sess,net_dict,test_out_dir,pfc)
+                        mask_folder = os.path.join(test_out_dir,'480p')
+
 
                     if step % MAX_ITER_PER_SEQ == 0:
                         
                         curr_seq = np.random.choice(all_train_seqs)
                         logger.info('switching. input provider seq:{}'.format(curr_seq))
                         input_provider = inp_provider_dict[curr_seq]
+                        input_provider.db.set_mask_folder(os.path.join(mask_folder,curr_seq))
                         reinit_branch(sess,curr_seq)
                         break
                 

@@ -20,18 +20,8 @@ import skimage
 import skimage.io
 import re
 # modules
-"""
-@ops.RegisterGradient("MaxPoolWithArgmax")
-def _MaxPoolWithArgmaxGrad(op, grad, unused_argmax_grad):
-  return gen_nn_ops._max_pool_grad(op.inputs[0],
-                                   op.outputs[0],
-                                   grad,
-                                   op.get_attr("ksize"),
-                                   op.get_attr("strides"),
-                                   padding=op.get_attr("padding"),
-                                   data_format='NHWC')
 
-"""
+
 # Constants describing the training process.
 MOVING_AVERAGE_DECAY = 0.9999     # The decay to use for the moving average.
 NUM_EPOCHS_PER_DECAY = 350.0      # Epochs after which learning rate decays.
@@ -296,9 +286,9 @@ def conv_layer_with_bn(inputT, shape, train_phase, activation=True, name=None):
       biases = _variable_on_cpu('biases', [out_channel], tf.constant_initializer(0.1))
       bias = tf.nn.bias_add(conv, biases)
       if activation is True:
-        conv_out = tf.nn.relu(batch_norm_layer(bias, train_phase, scope.name))
+        conv_out = tf.nn.relu(batch_renorm_layer(bias, train_phase, scope.name))
       else:
-        conv_out = batch_norm_layer(bias, train_phase, scope.name)
+        conv_out = batch_renorm_layer(bias, train_phase, scope.name)
     return conv_out
 
 def get_deconv_filter(f_shape):
@@ -332,12 +322,13 @@ def deconv_layer(inputT, f_shape, output_shape, stride=2, name=None):
                                         strides=strides, padding='SAME')
     return deconv
 
-def batch_norm_layer(inputT, is_training, scope):
+
+def batch_renorm_layer(inputT, is_training, scope):
   return tf.cond(is_training,
-          lambda: tf.contrib.layers.batch_norm(inputT, is_training=True,
-                           center=False, updates_collections=None, scope=scope+"_bn"),
-          lambda: tf.contrib.layers.batch_norm(inputT, is_training=False,
-                           updates_collections=None, center=False, scope=scope+"_bn", reuse = True))
+          lambda: tf.layers.batch_normalization(inputT, training=True,
+                        renorm=True, name=scope+"_bn"),
+          lambda: tf.layers.batch_normalization(inputT, training=False,
+                        renorm=True, name=scope+"_bn", reuse = True))
 
 
 def inference(images, labels, phase_train,weights = None):
