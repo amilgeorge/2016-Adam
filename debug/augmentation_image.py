@@ -7,6 +7,10 @@ from dataprovider.davis_cached_2016 import DataAccessHelper
 from matplotlib import pyplot as plt
 from skimage import morphology
 import numpy as np
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+import matplotlib.pyplot as plt
+from dataprovider import inputhelper
+
 
 davis = DataAccessHelper()
 
@@ -37,6 +41,40 @@ def func1():
 
     plt.tight_layout()
     fig.savefig('prev_mask_dataaug.png', bbox_inches='tight')
+    #plt.imsave()
+    plt.show()
+
+def func3():
+    label_path = davis.label_path('bear', 4)
+    label = davis.read_label(label_path)
+
+
+    e_mask = morphology.erosion(label, np.ones([5, 5]))
+    d_mask = morphology.dilation(label, np.ones([5, 5]))
+
+    ax = plt.subplot(1,2,1)
+    frame = plt.gca()
+    frame.axes.get_xaxis().set_visible(False)
+    frame.axes.get_yaxis().set_visible(False)
+    im = ax.imshow(np.uint8(label*255))
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+
+    plt.colorbar(im, cax=cax)
+
+
+    ax = plt.subplot(1,2,2)
+    frame = plt.gca()
+    frame.axes.get_xaxis().set_visible(False)
+    frame.axes.get_yaxis().set_visible(False)
+    dist_label = inputhelper.label_to_dist(label)
+    im = ax.imshow(np.uint8(dist_label*255))
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+
+    plt.colorbar(im, cax=cax)
+    plt.tight_layout()
+    plt.savefig('variant_prev_mask.png', bbox_inches='tight')
     #plt.imsave()
     plt.show()
 
@@ -93,4 +131,4 @@ def func2():
     plt.show()
 
 if __name__ == '__main__':
-    func2()
+    func3()

@@ -1,7 +1,9 @@
 import tensorflow as tf
 from net import segnet2
 from net import osvos
-from lstm import md_lstm
+#from lstm import md_lstm
+from net import segnet_brn as segnet_brn
+
 
 NUM_CLASSES = 2
 slim = tf.contrib.slim
@@ -51,6 +53,7 @@ def conv_layer(inputT, shape, activation=True, name=None):
         conv_out = bias
     return conv_out
 
+"""
 def inference_merge_two_branch_lstm(images_branch1, phase_train):
     with tf.variable_scope('branch1') as scope:
         branch1 = segnet2.inference_encoder_decoder(images_branch1,phase_train)
@@ -72,8 +75,7 @@ def inference_merge_two_branch_lstm(images_branch1, phase_train):
         net, _ = md_lstm.multi_dimensional_rnn_while_loop(rnn_size=2, input_data=net, sh=[1, 1])
 
 
-    """ end of Decode """
-    """ Start Classify """
+
     # output predicted class number (6)
     with tf.variable_scope('conv_classifier') as scope:
         kernel = segnet2._variable_with_weight_decay('weights',
@@ -86,7 +88,7 @@ def inference_merge_two_branch_lstm(images_branch1, phase_train):
 
     logit = conv_classifier
     return logit
-
+"""
 
 def inference_merge_two_branch_bn2(images_branch1, phase_train):
     with tf.variable_scope('branch1') as scope:
@@ -251,6 +253,277 @@ def inference_merge_two_branch_no_bn(images_branch1, phase_train):
         kernel = segnet2._variable_with_weight_decay('weights',
                                              shape=[1, 1, 32, NUM_CLASSES],
                                              initializer=segnet2.msra_initializer(1, 32),
+                                             wd=0.0005)
+        conv = tf.nn.conv2d(net, kernel, [1, 1, 1, 1], padding='SAME')
+        biases = segnet2._variable_on_cpu('biases', [NUM_CLASSES], tf.constant_initializer(0.1))
+        conv_classifier = tf.nn.bias_add(conv, biases, name=scope.name)
+
+    logit = conv_classifier
+    return logit
+
+def inference_merge_two_branch_baseline_brn(images_branch1, phase_train,return_branches = False):
+    with tf.variable_scope('branch1') as scope:
+        false_tensor = tf.constant(False)
+        branch1 = segnet_brn.inference_encoder_decoder(images_branch1,false_tensor)
+    with tf.variable_scope('branch2') as scope:
+        images_branch2 = images_branch1[:, :, :, 0:3]
+        images_branch2 = images_branch2[:,:,:,::-1]
+
+        #images_branch2 = tf.placeholder(tf.float32, [2, None, None, 3])
+
+        with slim.arg_scope(osvos.osvos_arg_scope()):
+            branch2,_ = osvos.osvos_net(images_branch2)
+
+    with tf.variable_scope('merger') as scope:
+
+        net = tf.concat(axis=3, values=[branch1, branch2], name='merged_b1_b2')
+        nb1 = tf.norm(branch1, ord=2)
+        nb2 = tf.norm(branch2, ord=2)
+        # find max as well
+        #net = tf.Print(net,[nb1,nb2])
+        net = tf.stop_gradient(net, name='merged_b1_b2_sg')
+
+
+    """ end of Decode """
+    """ Start Classify """
+    # output predicted class number (6)
+    with tf.variable_scope('conv_classifier') as scope:
+        kernel = segnet2._variable_with_weight_decay('weights',
+                                             shape=[1, 1, 128, NUM_CLASSES],
+                                             initializer=segnet2.msra_initializer(1, 128),
+                                             wd=0.0005)
+        conv = tf.nn.conv2d(net, kernel, [1, 1, 1, 1], padding='SAME')
+        biases = segnet2._variable_on_cpu('biases', [NUM_CLASSES], tf.constant_initializer(0.1))
+        conv_classifier = tf.nn.bias_add(conv, biases, name=scope.name)
+
+    logit = conv_classifier
+    if not return_branches:
+        return logit
+    else:
+        endpt = dict()
+        endpt['branch1'] = branch1
+        endpt['branch2'] = branch2
+        return logit,endpt
+
+def mini_encode_decode(net):
+    batch_size = tf.shape(net)[0]
+    IMG_HEIGHT = tf.shape(net)[1]  # IMAGE_HEIGHT
+    IMG_WIDTH = tf.shape(net)[2]  # IMAGE_WIDTH
+
+    net = conv_layer(net, [3, 3, 128, 64], True, name="encode_conv1_1")
+    net = conv_layer(net, [3, 3, 64, 64], True, name="encode_conv1_2")
+    net, pool1_indices = tf.nn.max_pool_with_argmax(net, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1],
+                                                      padding='SAME', name='auto_pool1')
+    net = conv_layer(net, [3, 3, 64, 32], True, name="encode_conv2_1")
+    net = conv_layer(net, [3, 3, 32, 32], True, name="encode_conv2_2")
+    net, pool2_indices = tf.nn.max_pool_with_argmax(net, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1],
+                                                          padding='SAME', name='auto_pool1')
+
+    out_size2 = tf.stack([batch_size,tf.cast(tf.ceil(IMG_HEIGHT / 2),tf.int32),tf.cast(tf.ceil(IMG_WIDTH / 2),tf.int32),tf.constant(32,tf.int32)])
+    net = segnet_brn.deconv_layer(net, [2, 2, 32, 32],out_size2, 2, "up2")
+    net = conv_layer(net, [3, 3, 32, 32], True, name="decode_conv2_1")
+    net = conv_layer(net, [3, 3, 32, 32], True, name="decode_conv2_2")
+    out_size1 = tf.stack([batch_size,IMG_HEIGHT,IMG_WIDTH ,32])
+    net = segnet_brn.deconv_layer(net, [2, 2, 32, 32],out_size1, 2, "up1")
+    net = conv_layer(net, [3, 3, 32, 32], True, name="decode_conv1_1")
+    net = conv_layer(net, [3, 3, 32, 32], True, name="decode_conv1_2")
+    return  net
+
+def mini_encode_decode_v2(net,k=7):
+    batch_size = tf.shape(net)[0]
+    IMG_HEIGHT = tf.shape(net)[1]  # IMAGE_HEIGHT
+    IMG_WIDTH = tf.shape(net)[2]  # IMAGE_WIDTH
+
+    net = conv_layer(net, [k, k, 128, 64], True, name="encode_conv1_1")
+    net = conv_layer(net, [k, k, 64, 64], True, name="encode_conv1_2")
+    net, pool1_indices = tf.nn.max_pool_with_argmax(net, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1],
+                                                      padding='SAME', name='auto_pool1')
+    net = conv_layer(net, [k,k, 64, 32], True, name="encode_conv2_1")
+    net = conv_layer(net, [k,k, 32, 32], True, name="encode_conv2_2")
+    net, pool2_indices = tf.nn.max_pool_with_argmax(net, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1],
+                                                          padding='SAME', name='auto_pool1')
+
+    out_size2 = tf.stack([batch_size,tf.cast(tf.ceil(IMG_HEIGHT / 2),tf.int32),tf.cast(tf.ceil(IMG_WIDTH / 2),tf.int32),tf.constant(32,tf.int32)])
+    net = segnet_brn.deconv_layer(net, [2, 2, 32, 32],out_size2, 2, "up2")
+    net = conv_layer(net, [k, k, 32, 32], True, name="decode_conv2_1")
+    net = conv_layer(net, [k, k, 32, 32], True, name="decode_conv2_2")
+    out_size1 = tf.stack([batch_size,IMG_HEIGHT,IMG_WIDTH ,32])
+    net = segnet_brn.deconv_layer(net, [2, 2, 32, 32],out_size1, 2, "up1")
+    net = conv_layer(net, [k, k, 32, 32], True, name="decode_conv1_1")
+    net = conv_layer(net, [k, k, 32, 32], True, name="decode_conv1_2")
+    return  net
+
+
+def inference_merge_two_branch_brn_auto(images_branch1, phase_train,return_branches = False):
+    return _inference_merge_two_branch_brn_auto(images_branch1, phase_train, k=3, return_branches=False)
+
+
+def inference_merge_two_branch_brn_auto_k7(images_branch1, phase_train,return_branches = False):
+    return  _inference_merge_two_branch_brn_auto(images_branch1, phase_train, k=7, return_branches=False)
+
+def inference_merge_two_branch_brn_auto_k9(images_branch1, phase_train,return_branches = False):
+    return  _inference_merge_two_branch_brn_auto(images_branch1, phase_train, k=9, return_branches=False)
+
+def _inference_merge_two_branch_brn_auto(images_branch1, phase_train,k,return_branches = False):
+    with tf.variable_scope('branch1') as scope:
+        false_tensor = tf.constant(False)
+        branch1 = segnet_brn.inference_encoder_decoder(images_branch1,false_tensor)
+
+    with tf.variable_scope('branch2') as scope:
+        images_branch2 = images_branch1[:, :, :, 0:3]
+        images_branch2 = images_branch2[:,:,:,::-1]
+
+        #images_branch2 = tf.placeholder(tf.float32, [2, None, None, 3])
+
+        with slim.arg_scope(osvos.osvos_arg_scope()):
+            branch2,_ = osvos.osvos_net(images_branch2)
+
+
+    with tf.variable_scope('merger') as scope:
+
+        net = tf.concat(axis=3, values=[branch1, branch2], name='merged_b1_b2')
+        nb1 = tf.norm(branch1, ord=2)
+        nb2 = tf.norm(branch2, ord=2)
+        # find max as well
+        #net = tf.Print(net,[nb1,nb2])
+
+        net = tf.stop_gradient(net, name='merged_b1_b2_sg')
+
+        net = mini_encode_decode_v2(net,k=k)
+
+
+    """ end of Decode """
+    """ Start Classify """
+    # output predicted class number (6)
+    with tf.variable_scope('conv_classifier') as scope:
+        kernel = segnet2._variable_with_weight_decay('weights',
+                                             shape=[1, 1, 32, NUM_CLASSES],
+                                             initializer=segnet2.msra_initializer(1, 128),
+                                             wd=0.0005)
+        conv = tf.nn.conv2d(net, kernel, [1, 1, 1, 1], padding='SAME')
+        biases = segnet2._variable_on_cpu('biases', [NUM_CLASSES], tf.constant_initializer(0.1))
+        conv_classifier = tf.nn.bias_add(conv, biases, name=scope.name)
+
+    logit = conv_classifier
+    if not return_branches:
+        return logit
+    else:
+        endpt = dict()
+        endpt['branch1'] = branch1
+        endpt['branch2'] = branch2
+        return logit,endpt
+
+
+from lstm import rnn
+def inference_merge_two_branch_brn_lstm(images_branch1, phase_train,return_branches = False):
+    with tf.variable_scope('branch1') as scope:
+        false_tensor = tf.constant(False)
+        branch1 = segnet_brn.inference_encoder_decoder(images_branch1,false_tensor)
+    with tf.variable_scope('branch2') as scope:
+        images_branch2 = images_branch1[:, :, :, 0:3]
+        images_branch2 = images_branch2[:,:,:,::-1]
+
+        #images_branch2 = tf.placeholder(tf.float32, [2, None, None, 3])
+
+        with slim.arg_scope(osvos.osvos_arg_scope()):
+            branch2,_ = osvos.osvos_net(images_branch2)
+
+
+
+    with tf.variable_scope('merger') as scope:
+
+        #net = tf.concat(axis=3, values=[branch1, branch2], name='merged_b1_b2')
+        nb1 = tf.norm(branch1, ord=2)
+        nb2 = tf.norm(branch2, ord=2)
+        # find max as well
+        #net = tf.Print(net,[nb1,nb2])
+
+        branch1 = tf.stop_gradient(branch1, name='merged_b1_sg')
+        branch2 = tf.stop_gradient(branch2, name='merged_b2_sg')
+
+        branch1 = conv_layer(branch1, [1, 1, 64, 32], True, name="branch1_dim_reduce1")
+        branch2 = conv_layer(branch2, [1, 1, 64, 32], True, name="branch2_dim_reduce1")
+        net = tf.concat(axis=3, values=[branch1, branch2], name='merged_b1_b2')
+
+        net = tf.Print(net,[nb1],message="LSTM step")
+        netr1 = rnn.BiRowRNNStatic(net,n_hidden=16,num_features=64,scope_name="birow1")
+        netc1 = rnn.BiColRNNStatic(net,n_hidden=16,num_features=64,scope_name="bicol1")
+        net = tf.concat(axis=3, values=[netr1, netc1], name='mergelstm1')
+        netr2 = rnn.BiRowRNNStatic(net,n_hidden=16,num_features=64,scope_name="birow2")
+        netc2 = rnn.BiColRNNStatic(net,n_hidden=16,num_features=64,scope_name="bicol2")
+        net = tf.concat(axis=3, values=[netr2, netc2], name='mergelstm2')
+        net = tf.Print(net, [nb1], message="LSTM step complete")
+
+    """ end of Decode """
+    """ Start Classify """
+    # output predicted class number (6)
+    with tf.variable_scope('conv_classifier') as scope:
+        kernel = segnet2._variable_with_weight_decay('weights',
+                                             shape=[1, 1, 64, NUM_CLASSES],
+                                             initializer=segnet2.msra_initializer(1, 64),
+                                             wd=0.0005)
+        conv = tf.nn.conv2d(net, kernel, [1, 1, 1, 1], padding='SAME')
+        biases = segnet2._variable_on_cpu('biases', [NUM_CLASSES], tf.constant_initializer(0.1))
+        conv_classifier = tf.nn.bias_add(conv, biases, name=scope.name)
+
+    logit = conv_classifier
+    if not return_branches:
+        return logit
+    else:
+        endpt = dict()
+        endpt['branch1'] = branch1
+        endpt['branch2'] = branch2
+        return logit,endpt
+
+
+def inference_merge_psp_v4_brn(images_branch1, phase_train):
+    print("mergenet - inference_merge_psp_v4_brn")
+    with tf.variable_scope('branch1') as scope:
+        false_tensor = tf.constant(False)
+        #branch1 = segnet2.inference_vgg16_withskip(images_branch1, labels=None, phase_train = phase_train)
+        branch1 = segnet_brn.inference_encoder_decoder(images_branch1, false_tensor)
+    with tf.variable_scope('branch2') as scope:
+        images_branch2 = images_branch1[:, :, :, 0:3]
+        images_branch2 = images_branch2[:,:,:,::-1]
+
+        #images_branch2 = tf.placeholder(tf.float32, [2, None, None, 3])
+
+        with slim.arg_scope(osvos.osvos_arg_scope()):
+            branch2,_ = osvos.osvos_net(images_branch2)
+
+    with tf.variable_scope('merger') as scope:
+
+
+
+
+        #nb1 = tf.norm(branch1, ord=2)
+        #nb2 = tf.norm(branch2, ord=2)
+        # find max as well
+        #net = tf.Print(net,[nb1,nb2])
+        netb1 = tf.stop_gradient(branch1, name='b1_sg')
+        netb2 = tf.stop_gradient(branch2, name='b2_sg')
+
+
+        netb1 = conv_layer(netb1, [3, 3, 64, 32], True, name="mergeb1_conv1")
+        netb1 = conv_layer(netb1, [3, 3, 32, 16], True, name="mergeb1_conv2")
+        netb1 = conv_layer(netb1, [3, 3, 16, 8], True, name="mergeb1_conv3")
+
+        netb2 = conv_layer(netb2, [3, 3, 64, 32], True, name="mergeb2_conv1")
+        netb2 = conv_layer(netb2, [3, 3, 32, 16], True, name="mergeb2_conv2")
+        netb2 = conv_layer(netb2, [3, 3, 16, 8], True, name="mergeb2_conv3")
+
+        pooled_b1 = pyramid_pool4(netb1,phase_train,name="ppb1")
+        pooled_b2 = pyramid_pool4(netb2,phase_train,name="ppb2")
+
+        net = tf.concat(axis=3, values=[netb1, netb2,pooled_b1,pooled_b2], name='merged_b1_b2_pool')
+
+    """ end of Decode """
+    """ Start Classify """
+    # output predicted class number (6)
+    with tf.variable_scope('conv_classifier') as scope:
+        kernel = segnet2._variable_with_weight_decay('weights',
+                                             shape=[1, 1, 22, NUM_CLASSES],
+                                             initializer=segnet2.msra_initializer(1, 22),
                                              wd=0.0005)
         conv = tf.nn.conv2d(net, kernel, [1, 1, 1, 1], padding='SAME')
         biases = segnet2._variable_on_cpu('biases', [NUM_CLASSES], tf.constant_initializer(0.1))
@@ -845,9 +1118,9 @@ def pyramid_pool(input,phase_train):
         pool2_resized = tf.image.resize_bilinear(pool2,inp_shape[1:3])
         pool3_resized = tf.image.resize_bilinear(pool3,inp_shape[1:3])
 
-        pool1_reduced = conv_layer(pool1_resized, [1, 1, 128, 1], False, name="pool1_dim_red")
-        pool2_reduced = conv_layer(pool2_resized, [1, 1, 128, 1], False, name="pool2_dim_red")
-        pool3_reduced = conv_layer(pool3_resized, [1, 1, 128, 1], False, name="pool3_dim_red")
+        pool1_reduced = conv_layer(pool1_resized, [1, 1, 128, 1], True, name="pool1_dim_red")
+        pool2_reduced = conv_layer(pool2_resized, [1, 1, 128, 1], True, name="pool2_dim_red")
+        pool3_reduced = conv_layer(pool3_resized, [1, 1, 128, 1], True, name="pool3_dim_red")
 
         concat = tf.concat([pool1_reduced, pool2_reduced, pool3_reduced], axis=3)
 
@@ -897,9 +1170,9 @@ def pyramid_pool4(input,phase_train,name):
         pool2_resized = tf.image.resize_bilinear(pool2,inp_shape[1:3])
         pool3_resized = tf.image.resize_bilinear(pool3,inp_shape[1:3])
 
-        pool1_reduced = conv_layer(pool1_resized, [1, 1, 8, 1], False, name=name+"pool1_dim_red")
-        pool2_reduced = conv_layer(pool2_resized, [1, 1, 8, 1], False, name=name+"pool2_dim_red")
-        pool3_reduced = conv_layer(pool3_resized, [1, 1, 8, 1], False, name=name+"pool3_dim_red")
+        pool1_reduced = conv_layer(pool1_resized, [1, 1, 8, 1], True, name=name+"pool1_dim_red")
+        pool2_reduced = conv_layer(pool2_resized, [1, 1, 8, 1], True, name=name+"pool2_dim_red")
+        pool3_reduced = conv_layer(pool3_resized, [1, 1, 8, 1], True, name=name+"pool3_dim_red")
 
         concat = tf.concat([pool1_reduced, pool2_reduced, pool3_reduced], axis=3)
 
@@ -933,13 +1206,13 @@ def inference_merge_psp_v4(images_branch1, phase_train):
         netb2 = tf.stop_gradient(branch2, name='b2_sg')
 
 
-        netb1 = conv_layer(netb1, [3, 3, 64, 32], False, name="mergeb1_conv1")
-        netb1 = conv_layer(netb1, [3, 3, 32, 16], False, name="mergeb1_conv2")
-        netb1 = conv_layer(netb1, [3, 3, 16, 8], False, name="mergeb1_conv3")
+        netb1 = conv_layer(netb1, [3, 3, 64, 32], True, name="mergeb1_conv1")
+        netb1 = conv_layer(netb1, [3, 3, 32, 16], True, name="mergeb1_conv2")
+        netb1 = conv_layer(netb1, [3, 3, 16, 8], True, name="mergeb1_conv3")
 
-        netb2 = conv_layer(netb2, [3, 3, 64, 32], False, name="mergeb2_conv1")
-        netb2 = conv_layer(netb2, [3, 3, 32, 16], False, name="mergeb2_conv2")
-        netb2 = conv_layer(netb2, [3, 3, 16, 8], False, name="mergeb2_conv3")
+        netb2 = conv_layer(netb2, [3, 3, 64, 32], True, name="mergeb2_conv1")
+        netb2 = conv_layer(netb2, [3, 3, 32, 16], True, name="mergeb2_conv2")
+        netb2 = conv_layer(netb2, [3, 3, 16, 8], True, name="mergeb2_conv3")
 
         pooled_b1 = pyramid_pool4(netb1,phase_train,name="ppb1")
         pooled_b2 = pyramid_pool4(netb2,phase_train,name="ppb2")

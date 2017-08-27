@@ -648,7 +648,32 @@ def inference_vgg16_withskip(images, labels, phase_train, weights=None):
 
     logit = conv_classifier
     if labels is None:
+
         return logit
+    else:
+        loss = cal_loss(conv_classifier, labels, weights)
+        return loss, logit
+
+def inference_vgg16_withskip_withendpoints(images, labels, phase_train, weights=None):
+
+    conv_decode1_1 = inference_encoder_decoder(images,phase_train)
+    """ end of Decode """
+    """ Start Classify """
+    # output predicted class number (6)
+    with tf.variable_scope('conv_classifier') as scope:
+        kernel = _variable_with_weight_decay('weights',
+                                             shape=[1, 1, 64, NUM_CLASSES],
+                                             initializer=msra_initializer(1, 64),
+                                             wd=0.0001)
+        conv = tf.nn.conv2d(conv_decode1_1, kernel, [1, 1, 1, 1], padding='SAME')
+        biases = _variable_on_cpu('biases', [NUM_CLASSES], tf.constant_initializer(0.1))
+        conv_classifier = tf.nn.bias_add(conv, biases, name=scope.name)
+
+    logit = conv_classifier
+    if labels is None:
+        endpt = dict()
+        endpt['decode1_1'] = conv_decode1_1
+        return logit,endpt
     else:
         loss = cal_loss(conv_classifier, labels, weights)
         return loss, logit

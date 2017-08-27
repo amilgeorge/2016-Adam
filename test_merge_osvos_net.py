@@ -152,10 +152,14 @@ def build_test_model():
                }
     return ret_val
 
-def test_sequence(session,net,sequence_name,out_dir, pfc):
+def test_sequence(session,net,sequence_name,out_dir, pfc,prev_mask_dir=None,prev_mask_preprocessor = None):
 
     mask_out_dir = os.path.join(out_dir,'480p')
     prob_map_dir = os.path.join(out_dir,'prob_maps')
+
+    if prev_mask_dir is None:
+        prev_mask_dir = mask_out_dir
+
     frames = davis.all_frames_nums(sequence_name)
     label_path = davis.label_path(sequence_name, min(frames))
     prev_mask = davis.read_label(label_path, [IMAGE_HEIGHT,IMAGE_WIDTH])*255
@@ -175,23 +179,27 @@ def test_sequence(session,net,sequence_name,out_dir, pfc):
             prev_label_path = davis.label_path(sequence_name, prev_frame_no)
             prev_mask = davis.read_label(prev_label_path, [IMAGE_HEIGHT, IMAGE_WIDTH]) * 255
         else:
-            prev_label_path = prev_mask_path(mask_out_dir, sequence_name, frame_no , pfc)
+            prev_label_path = prev_mask_path(prev_mask_dir, sequence_name, frame_no , pfc)
 
             print("using prev mask {} for frame {}".format(prev_label_path,frame_no))
             prev_mask = read_label(prev_label_path, [IMAGE_HEIGHT, IMAGE_WIDTH])
             prev_mask = threshold_image(prev_mask)
             assert np.logical_or((prev_mask == 1), (prev_mask == 0)).all(), "expected 0 or 1 in binary mask"
+
+            if prev_mask_preprocessor is not None:
+                prev_mask = inputhelper.prev_mask_preprocess(prev_mask, prev_mask_preprocessor)
+
             prev_mask = prev_mask * 255
             if DILATE_SZ > 0:
                 print("dilating")
                 prev_mask = morphology.dilation(prev_mask, np.ones([DILATE_SZ, DILATE_SZ]))
             #print("dilating")
             #prev_mask = morphology.dilation(prev_mask, np.ones([10, 10]))
-            assert np.logical_or((prev_mask == 255), (prev_mask == 0)).all(), "expected 0 or 255 in binary mask"
+            #assert np.logical_or((prev_mask == 255), (prev_mask == 0)).all(), "expected 0 or 255 in binary mask"
 
 
         inp_img = inputhelper.prepare_input_img_uint8(img, prev_mask, prev_img)
-        inputhelper.verify_input_img(inp_img[0,:,:,:])
+        inputhelper.verify_input_img(inp_img[0,:,:,:],prev_mask_preprocessor)
         inp_img = vgg_preprocess(inp_img)
 
         # Run model
@@ -222,15 +230,15 @@ def test_sequence(session,net,sequence_name,out_dir, pfc):
 
         save_image(mask_out_dir, sequence_name, frame_no, skimage.img_as_ubyte(pred_mask))
 
-def test_network(sess,net,out_dir,pfc):
+def test_network(sess,net,out_dir,pfc,prev_mask_dir=None,prev_mask_preprocessor = None):
     test_sequences = davis.test_sequence_list() + davis.train_sequence_list()
     for seq in test_sequences:
         logger.info('Testing sequence: {}'.format(seq))
         reinit_branch(sess,seq)
-        test_sequence(sess, net, seq, out_dir, pfc)
+        test_sequence(sess, net, seq, out_dir, pfc,prev_mask_dir,prev_mask_preprocessor)
 
 
-def test_net(sequences,out_dir,pfc):
+def test_net(sequences,out_dir,pfc,prev_mask_preprocessor=None):
     #if sequences == None:
     #    sequences=[name for name in os.listdir(inp_dir) if os.path.isdir(name)]
 
@@ -242,7 +250,7 @@ def test_net(sequences,out_dir,pfc):
 
         for seq in sequences:
             logger.info('Testing sequence: {}'.format(seq))
-            test_sequence(sess, net, seq,out_dir, pfc)
+            test_sequence(sess, net, seq,out_dir, pfc,prev_mask_preprocessor=prev_mask_preprocessor)
 
 
 if __name__ == '__main__':

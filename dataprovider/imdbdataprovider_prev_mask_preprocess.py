@@ -48,7 +48,9 @@ class InputProvider:
            
             
     class DataBatch:pass
-    
+
+
+
     class DataIterator:
         
         def __init__(self,db,prev_frame_calculator,batch_size,is_training,prev_frame_preprocessor):
@@ -60,7 +62,11 @@ class InputProvider:
             self.img_channels = 7
             num_images = self.db.num_train_infos()
             print("Num images = {} ,preprocessor :{}".format(num_images,prev_frame_preprocessor))
-            self.sequence_info = np.random.permutation(list(range(num_images)))
+            if self.is_training:
+                self.sequence_info = np.random.permutation(list(range(num_images)))
+            else:
+                self.sequence_info = list(range(num_images))
+
             self.index = 0
             self.batch_size = batch_size
             self.transformer = ImageRandomTransformer(self._get_transform_config2())
@@ -97,7 +103,75 @@ class InputProvider:
 
 
 
+
+
         def __next__(self):
+            if self.is_training:
+                return self.train_next()
+            else:
+                return self.val_next()
+
+        def val_next(self):
+            to_index = self.index + self.batch_size
+            if to_index <= len(self.sequence_info):
+
+                selected_indexes = self.sequence_info[self.index:to_index]
+                # print(selected_indexes)
+
+                # Read images and labels
+                images = np.zeros([self.batch_size] + self.img_size + [self.img_channels], dtype=np.float32)
+                labels = np.zeros([self.batch_size] + self.img_size)
+                weights = np.empty([self.batch_size] + self.img_size, dtype=np.float32)
+
+                for i, idx in enumerate(selected_indexes):
+                    # import pdb
+                    # pdb.set_trace()
+                    image, label = self.db.get_at(idx, self.prev_frame_calculator)
+                    label_dim = np.expand_dims(label, axis=2)
+
+                    image = skimage.img_as_float(image)
+
+                    stked = np.concatenate((image, label_dim), axis=2)
+
+
+                    image = stked[:, :, 0:7]
+
+                    if self.prev_frame_preprocessor is not None:
+                        image = self.preprocess_prev_frame(image)
+
+                    image = image * 255
+
+                    label = np.uint8(stked[:, :, 7])
+                    ## Label as changes
+                    images[i, :, :, :] = image
+                    labels[i, :, :] = label
+
+                    if ((np.count_nonzero(images[i, :, :, 3]) == 0)):
+                        print("warning :imgprovider previmg all zeros")
+                        labels[i, :, :] = 0
+
+                    # weights[i,:,:] = inputhelper.get_distance_transform(label)
+
+                    weights[i, :, :] = inputhelper.get_weights_classwise_osvos_old(label)
+                    # weights[i,:,:] = inputhelper.get_weights_osvos_distance(label)
+
+                    # weights[i,:,:] = inputhelper.get_weights_classwise2(label,factor=3)
+                    inputhelper.verify_input_img(images[i, :, :, :], self.prev_frame_preprocessor)
+
+                images = vgg_preprocess(images)
+
+                # Prepare data batch
+                batch = InputProvider.DataBatch()
+                batch.images = images
+                batch.labels = labels
+                batch.weights = weights
+
+                self.index += self.batch_size
+                return batch
+            else:
+                raise StopIteration()
+
+        def train_next(self):
             to_index = self.index + self.batch_size
             if to_index <= len(self.sequence_info):
 
@@ -196,13 +270,6 @@ class InputProvider:
             frame.axes.get_yaxis().set_visible(False)
             plt.imshow(img[:,:,3])
 
-        def get_data(self,selected_indexes):  
-            if self.is_training:
-                pass
-            else:
-                pass
-                #image = transform.resize(image,resize)
-                #return  
         
         def process_prev_mask_in_image(self,image):
             MASK_CHANNEL = 3
@@ -216,7 +283,7 @@ class InputProvider:
             prev_mask = image[:, :, MASK_CHANNEL]
             prev_mask = inputhelper.label_to_dist(np.round(prev_mask))
             image[:, :, MASK_CHANNEL] = prev_mask
-            print(prev_mask)
+            #print(prev_mask)
             return image
 
         def preprocess_prev_frame(self,image):
@@ -257,6 +324,10 @@ class InputProvider:
             
     def sequence_batch_itr(self, batch_size):
         return self.DataIterator(self.db,self.prev_frame_calculator, batch_size,is_training=True,
+                                 prev_frame_preprocessor=self.prev_frame_preprocessor)
+
+    def val_seq_batch_itr(self, batch_size):
+        return self.DataIterator(self.db,self.prev_frame_calculator, batch_size,is_training=False,
                                  prev_frame_preprocessor=self.prev_frame_preprocessor)
 
     def initialize_iterator(self,batch_size):
@@ -336,7 +407,7 @@ def test_gen_samples():
     max_num = 1000
     batch_size = 4
     while num < max_num:
-        input_batch = provider.sequence_batch_itr(batch_size)
+        input_batch = provider.val_sequence_batch_itr(batch_size)
 
         for i, batch in enumerate(input_batch):
             print (i, 'rgb files: ')

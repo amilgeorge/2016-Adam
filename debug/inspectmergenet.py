@@ -43,7 +43,7 @@ def get_all_checkpoint_files(dir):
 
 if __name__ == '__main__':
     #file_name = '/usr/stud/george/workspace/adam/exp/mergeosvosnet-v1_no_BN-seqdavis2016-B1O-1-adam<1e-6>-opt-adam-<1e-4>-250iter-1/iters-95000'
-    file_name = '/usr/stud/george/workspace/adam/exp/mergeosvosnet-L2_normed_fm_no_bn-seqdavis2016-B1O-1-adam<1e-6>-opt-adam-<1e-2>-250iter-1/iters-25000'
+    #file_name = '/usr/stud/george/workspace/adam/exp/adam-<1e-2>-250iter-1/iters-25000'
 
     #mdir = '/usr/stud/george/workspace/adam/exp/mergeosvosnet-L2_normed_fm_no_bn-seqdavis2016-B1O-1-adam<1e-6>-opt-adam-<1e-2>-250iter-1'
     #mdir = '/usr/stud/george/workspace/adam/exp/mergeosvosnet-v1_no_BN-seqdavis2016-B1O-1-adam<1e-6>-opt-adam-<1e-4>-250iter-1'
@@ -52,7 +52,7 @@ if __name__ == '__main__':
     #tensor_name = 'merger/merge_conv1/ort_weights'
 
     #mdir = '/usr/stud/george/workspace/adam/exp/mergeosvosnet-v1_baseline_osvos_test-seqdavis2016-B1O-1-adam<1e-6>-opt-adam-<1e-4>-250iter-1'
-    mdir = '/usr/stud/george/workspace/adam/exp/mergeosvosnet-v1_baseline-seqdavis2016-B1O-1-adam<1e-6>-opt-adam-<1e-4>-250iter-1'
+    mdir = '/usr/stud/george/workspace/adam/exp/mergeosvosnet-v1_baseline_brn-seqdavis2016-B1O-1-adam<1e-6>-opt-adam-<1e-4>-250iter-1'
 
     tensor_name = 'conv_classifier/weights'
 

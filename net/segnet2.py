@@ -21,15 +21,15 @@ import skimage.io
 import re
 # modules
 """
-@ops.RegisterGradient("MaxPoolWithArgmax")
-def _MaxPoolWithArgmaxGrad(op, grad, unused_argmax_grad):
-  return gen_nn_ops._max_pool_grad(op.inputs[0],
-                                   op.outputs[0],
-                                   grad,
-                                   op.get_attr("ksize"),
-                                   op.get_attr("strides"),
-                                   padding=op.get_attr("padding"),
-                                   data_format='NHWC')
+    @ops.RegisterGradient("MaxPoolWithArgmax")
+    def _MaxPoolWithArgmaxGrad(op, grad, unused_argmax_grad):
+      return gen_nn_ops._max_pool_grad(op.inputs[0],
+                                       op.outputs[0],
+                                       grad,
+                                       op.get_attr("ksize"),
+                                       op.get_attr("strides"),
+                                       padding=op.get_attr("padding"),
+                                       data_format='NHWC')
 
 """
 # Constants describing the training process.

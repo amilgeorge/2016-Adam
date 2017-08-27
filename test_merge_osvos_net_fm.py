@@ -203,7 +203,11 @@ def test_sequence(session,net,sequence_name,out_dir, pfc):
             print("using prev mask {} for frame {}".format(prev_label_path,frame_no))
             prev_mask = read_label(prev_label_path, [IMAGE_HEIGHT, IMAGE_WIDTH])
             prev_mask = threshold_image(prev_mask)
+
+
             assert np.logical_or((prev_mask == 1), (prev_mask == 0)).all(), "expected 0 or 1 in binary mask"
+
+
             prev_mask = prev_mask * 255
             if DILATE_SZ > 0:
                 print("dilating")

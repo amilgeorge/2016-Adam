@@ -143,7 +143,7 @@ def process_sequences(src_dirs,out_dir):
 
 if __name__ == '__main__':
 
-    out_dir = 'upperbound_osvos_and_mergeosvositer99000/'
+    out_dir = 'upperbound_osvos_and_tpsm-dist/'
     out_dir = os.path.join('../Results',out_dir)
     #src_dirs =['segnet480pvgg-wl-dp2-osvos-val-O0-4/iter-45000',
     #              'segnet480pvgg-wl-dp2-osvos-val-O1-3/iter-45000',
@@ -152,7 +152,9 @@ if __name__ == '__main__':
     #src_dirs = [os.path.join('test_out',sd,'480p') for sd in src_dirs]
     src_dirs = []
     #src_dirs.append("/usr/stud/george/workspace/adam/test_out/s480pvgg-davis2016-O1-osvosold-reg1e-4-mo<1e-2>-de-1/iter-500000/480p")
-    src_dirs.append("/usr/stud/george/workspace/adam/test_out/mergeosvosnet-seqdavis2016-B1O-1-adam<1e-6>-opt-adam-<1e-4>-3/iter-99000/480p")
+    #src_dirs.append("/usr/stud/george/workspace/adam/test_out/mergeosvosnet-seqdavis2016-B1O-1-adam<1e-6>-opt-adam-<1e-4>-3/iter-99000/480p")
+    src_dirs.append("/usr/stud/george/workspace/adam/test_out/s480pvgg-segnet_brn-daviscombo-O1-Plabel_to_dist-osvosold-reg1e-4-mo<1e-2>-de-scale1.3-1/iter-685000/480p")
+
     src_dirs.append("/usr/stud/george/workspace/Results/OSVOS")
 
     process_sequences(src_dirs,out_dir)
