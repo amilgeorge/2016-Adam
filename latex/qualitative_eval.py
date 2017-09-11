@@ -8,6 +8,8 @@ davis = DataAccessHelper()
 trainseqs = davis.train_sequence_list()
 testseqs = davis.test_sequence_list()
 
+TARGET_FOLDER = "merge_net_eval"
+
 def print_tab(seq,set,len):
     print("\hline {} & {} & {} \\\\".format(seq, set, len))
 
@@ -15,10 +17,13 @@ def print_tab2(seq,set,len,numobjects,im_shape):
     print("\hline {} & {} & {} & {} & {}X{}\\\\".format(seq, set, len,numobjects,im_shape[0],im_shape[1]))
 
 def copy_for_seq(seq,sel_frames):
-    dst_dir = '/usr/stud/george/tpsm_dist_transform_eval/'
+    dst_dir = os.path.join('/usr/stud/george/',TARGET_FOLDER)
+    #src_dir = '/usr/stud/george/workspace/adam/test_out/' \
+    #          's480pvgg-segnet_brn-daviscombo-O1-Plabel_to_dist-osvosold-reg1e-4-mo<1e-2>-de-scale1.3-1/' \
+    #          'iter-685000/480p-vis'
     src_dir = '/usr/stud/george/workspace/adam/test_out/' \
-              's480pvgg-segnet_brn-daviscombo-O1-Plabel_to_dist-osvosold-reg1e-4-mo<1e-2>-de-scale1.3-1/' \
-              'iter-685000/480p-vis'
+              'mergeosvosnet-v1_baseline_brn_auto-seqdavis2016-B1O-1-adam<1e-6>-opt-adam-<1e-4>-25iter-3/iter-22500' \
+              '/480p-vis'
 
     if not os.path.exists(dst_dir):
         os.makedirs(dst_dir)
@@ -40,7 +45,7 @@ def print_for_seq(seq,sel_frames):
         end ='&'
         if i==3 or i==7:
             end = "\\\\"
-        print("{{\includegraphics[width=0.25\linewidth]{{tpsm_dist_transform_eval/{0}}}}}{1}".format(name,end))
+        print("{{\includegraphics[width=0.25\linewidth]{{{2}/{0}}}}}{1}".format(name,end,TARGET_FOLDER))
 
 def get_name(seq,frame_no):
     return "{0}_{1:05}.jpg".format(seq,frame_no)

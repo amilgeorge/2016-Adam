@@ -15,7 +15,7 @@ from dataprovider import inputhelper
 davis = DataAccessHelper()
 
 def func1():
-    label_path = davis.label_path('bear', 4)
+    label_path = davis.label_path('bmx-bumps', 4)
     label = davis.read_label(label_path)
 
 
@@ -24,17 +24,17 @@ def func1():
 
     fig, axes = plt.subplots(1,3)
     print(axes)
-    axes[0].imshow(label)
+    axes[0].imshow(label,cmap='jet')
     axes[0].set_title('Original Mask')
     axes[0].get_xaxis().set_visible(False)
     axes[0].get_yaxis().set_visible(False)
 
-    axes[1].imshow(e_mask)
+    axes[1].imshow(e_mask,cmap='jet')
     axes[1].set_title('Eroded Mask (s = 5)')
     axes[1].get_xaxis().set_visible(False)
     axes[1].get_yaxis().set_visible(False)
 
-    axes[2].imshow(d_mask)
+    axes[2].imshow(d_mask,cmap='jet')
     axes[2].set_title('Dilated Mask (s = 5)')
     axes[2].get_xaxis().set_visible(False)
     axes[2].get_yaxis().set_visible(False)
@@ -131,4 +131,4 @@ def func2():
     plt.show()
 
 if __name__ == '__main__':
-    func3()
+    func1()

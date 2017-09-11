@@ -1,6 +1,6 @@
 from dataprovider.davis_cached_2016 import DataAccessHelper
 from matplotlib import pyplot as plt
-from skimage import morphology
+from skimage import morphology,io
 import numpy as np
 import skimage
 from dataprovider.transformer_rand import ImageRandomTransformer
@@ -38,6 +38,8 @@ if __name__ == '__main__':
         row = int(i/3);
         col = int(i%3)
         image_trans,_ = transformer.get_random_transformed(image)
+        img = np.uint8(image_trans*255)
+        skimage.io.imsave('dataaug_{}.png'.format(i),img)
         axes[row,col].imshow(np.uint8(image_trans*255))
         axes[row,col].get_xaxis().set_visible(False)
         axes[row,col].get_yaxis().set_visible(False)

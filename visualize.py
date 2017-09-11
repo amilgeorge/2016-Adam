@@ -68,10 +68,13 @@ if __name__ == '__main__':
     #dirs = ['agg_half2-O1O5O10']
 
     #dirs = ['s480pvgg-segnet_brn-daviscombo-O1-Plabel_to_dist-osvosold-reg1e-4-mo<1e-2>-de-scale1.3-1/iter-685000']
-    dirs = ['s480pvgg-segnet_brn-daviscombo-O1-PNone-osvosold-reg1e-4-mo<1e-2>-de-scale1.3-1/iter-700000']
+    #dirs = ['s480pvgg-segnet_brn-daviscombo-O1-PNone-osvosold-reg1e-4-mo<1e-2>-de-scale1.3-1/iter-700000']
+    #dirs = ['segnet480pvgg-davis2016-wl-O1-osvosnew-reg1e-4-lr1e-2-1/iter-45000']
+    #dirs = ['mergeosvosnet-v1_baseline_brn_auto-seqdavis2016-B1O-1-adam<1e-6>-opt-adam-<1e-4>-25iter-3/iter-22500']
+    dirs = ['OSVOS']
 
     for d in dirs:
-        masks_dir = '../adam/test_out/{}/480p'.format(d)
+        masks_dir = '../Results/{}'.format(d)
         print ('processing for {}'.format(masks_dir))
         out_dir = masks_dir+'-vis'
         draw_masks(masks_dir,out_dir)
